@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Sasayaki.Core/Sasayaki.Core.csproj" />
+    <Project Path="src/Sasayaki.App/Sasayaki.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Sasayaki.Tests/Sasayaki.Tests.csproj" />
+  </Folder>
+</Solution>
