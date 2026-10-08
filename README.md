@@ -7,12 +7,45 @@ the app does not use the clipboard.
 **Status:** initial desktop build available. Offline checks and startup pass;
 Azure and physical Windows acceptance are pending. The two-second target is unmeasured.
 
+## Before first run
+
+Create the two deployments using [Azure setup](clone-run/AZURE-SETUP.md), then
+have these six values ready to enter in the app's Settings:
+
+| Setting | Where to find it / expected value |
+| --- | --- |
+| Speech resource root | Azure OpenAI resource's HTTPS endpoint, such as `https://YOUR-RESOURCE.openai.azure.com/` |
+| Speech deployment | Your deployment name, normally `sasayaki-speech` |
+| Speech API key | Key shown in **Build > Models > sasayaki-speech > Details** |
+| Cleanup base URL | Cleanup resource's endpoint ending in `/openai/v1/` |
+| Cleanup deployment | Your deployment name, normally `sasayaki-cleanup` |
+| Cleanup API key | Key shown in **Build > Models > sasayaki-cleanup > Details** |
+
+Keep the Azure endpoint/key pages available while configuring the app. Enter
+the values directly in Settings; no separate Azure settings file is needed.
+
+If both deployments share one Foundry resource, use the same resource key in both
+key fields. The speech URL is `https://YOUR-RESOURCE.openai.azure.com/`;
+the cleanup URL is `https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/`.
+Each deployment still has its own name in Settings.
+
+The deployment Details pages may show complete API URLs. For speech, use the
+Azure OpenAI resource endpoint root, for example
+`https://YOUR-RESOURCE.openai.azure.com/`, without a deployment path or query.
+For cleanup, remove `responses` from the displayed `/openai/v1/responses` URL,
+leaving `/openai/v1/`. The app constructs the request routes itself.
+
+Speech uses the `gpt-live-transcribe` realtime model. Its deployment name in the
+app can remain `sasayaki-speech`; deploy the GPT Live Transcribe model with that
+name (or enter the deployment name you choose). The former MAI deployment is not
+used by this build.
+
 ## Run
 
 Open `artifacts/win-x64/Sasayaki.exe`. Keep the entire published folder together;
-the build includes the .NET runtime. Settings opens on first launch. Configure
-the two deployments using [Azure setup](clone-run/AZURE-SETUP.md), enter keys in
-the masked fields, test the connections, and save. Saved keys are protected for
+the build includes the .NET runtime. Settings opens on first launch. Enter the
+six values above, using the masked fields for keys, test the connections, and
+save. Saved keys are protected for
 your Windows account under `%LOCALAPPDATA%\Sasayaki`, outside this repository.
 
 - Hold Ctrl+Win and speak; release to finish.

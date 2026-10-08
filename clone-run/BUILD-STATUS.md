@@ -11,7 +11,7 @@ The plan still represents the requested scope. No independent reviewer was used.
 Preserved the exact gesture, Azure provider choices, current-caret insertion,
 clipboard constraint, and two-second target. No Azure resources were created.
 
-Existing work: core gesture machine, configuration, MAI transport, transcript
+Existing work: core gesture machine, configuration, Realtime transport, transcript
 accumulation, cleanup client, PCM framing, DPAPI store, microphone scaffold.
 
 Added: WPF host, single-instance guard, tray menu, masked settings, Azure connection
@@ -25,12 +25,28 @@ the resampler input alive across callback gaps rather than reporting temporary
 buffer exhaustion as EOF; gate new sessions while old capture drains; preserve
 retained text when Escape disarms recovery. Audio and transcripts are not logged.
 
-Speech protocol rechecked against Microsoft's current guide:
-https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe-2-streaming-realtime
+Speech protocol initially implemented against MAI guidance; replaced on 2026-10-08
+with GPT Realtime `gpt-live-transcribe`, using Microsoft's current 24 kHz WebSocket
+transcription sample: https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-websockets
 NAudio streaming behavior reviewed against upstream MediaFoundationTransform.cs
 at tag v2.2.1. No cloud parameter or model accuracy claims were inferred from mocks.
 
 ## Recorded checks
+
+### 2026-10-08 live speech investigation
+
+Azure settings are now saved, and the user reports that the Settings connection
+test succeeds. Live dictation fails. Reproduced twice using the saved settings:
+synthetic silence through the speech client, and generated speech using the
+minimal documented session configuration. Both configured the session, then Azure
+returned `server_error`, code `unimplemented`, message `Input transcription failed.`
+No microphone audio or credentials were printed. A working live transcription
+path remains blocked; the Azure backend cause has not been established.
+
+Added safe, specific messages for known speech errors without exposing arbitrary
+service payloads. Offline tests now pass 44/44, including error classification,
+malformed errors, retained partial text, and suppression of echoed private data.
+The entries below preserve the earlier build's historical checks.
 
 | Command/check | Actual result |
 | --- | --- |
@@ -65,6 +81,22 @@ an automated certificate of complete native-input acceptance.
    clipboard fixtures/history, and microphone/network failures.
 4. Measure the full 30-utterance latency fixture. Optimize any failures; do not
    label the two-second requirement met from submission timing or averages.
+
+## 2026-10-08 GPT Live Transcribe rebuild
+
+Changed the speech endpoint to `/openai/v1/realtime?intent=transcription`, configured
+24 kHz PCM16 mono with minimal transcription delay, and send microphone frames while
+recording. The finish gesture drains the send queue and commits the audio. Updated
+the Azure setup guide and app field label for the Azure OpenAI resource root. The
+existing deployment name `sasayaki-speech` remains valid if assigned to the new
+`gpt-live-transcribe` model deployment. This build has not yet been tested against
+that Azure deployment or with a microphone.
+
+| Command/check | Result |
+| --- | --- |
+| `pwsh -File scripts/Build.ps1 -Publish` | Succeeded; Release build and self-contained win-x64 publish, 0 warnings/errors |
+| Offline tests | Not run for this rebuild |
+| Live Azure transcription / microphone acceptance | Not run; requires a deployed `gpt-live-transcribe` model |
 
 Known technical risk: Ctrl+Win interception uses suppression of the completing
 modifier and an unassigned-key menu mask. Offline routing tests pass; actual shell

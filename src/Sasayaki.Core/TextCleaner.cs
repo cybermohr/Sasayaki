@@ -46,6 +46,26 @@ public sealed class TextCleaner(HttpClient http)
 
 public static class ServiceErrors
 {
+    public static string ForSpeechEvent(JsonElement message)
+    {
+        // Match known identifiers only. Error messages and unknown identifiers may
+        // contain dictated text or credentials and must never reach the UI/logs.
+        if (!message.TryGetProperty("error", out var error) || error.ValueKind != JsonValueKind.Object)
+            return "Speech transcription failed. Check the deployment, credentials, and connection.";
+        var code = error.TryGetProperty("code", out var codeValue) && codeValue.ValueKind == JsonValueKind.String
+            ? codeValue.GetString() : null;
+        var type = error.TryGetProperty("type", out var typeValue) && typeValue.ValueKind == JsonValueKind.String
+            ? typeValue.GetString() : null;
+        return code switch
+        {
+            "unimplemented" => "Azure speech returned 'unimplemented' while processing the transcription request. The connection test does not verify audio transcription. Contact Azure support about Realtime transcription support for this deployment and version.",
+            "rate_limit_exceeded" => "Azure speech is rate limited (rate_limit_exceeded). Wait before recording again and check the speech deployment's rate limit.",
+            "input_audio_buffer_commit_empty" => "Azure speech received too little audio to transcribe (input_audio_buffer_commit_empty). Hold Ctrl+Win longer and check the selected microphone.",
+            _ when type == "server_error" => "Azure speech reported a server error while transcribing. Try again later; if it persists, contact Azure support for this deployment.",
+            _ => "Speech transcription failed. Check the deployment, credentials, and connection."
+        };
+    }
+
     public static string ForStatus(string service, int status) => status switch
     {
         401 or 403 => $"{service} access denied ({status}). Check the resource key, endpoint, and network permissions in Settings.",

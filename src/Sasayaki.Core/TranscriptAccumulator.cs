@@ -24,7 +24,7 @@ public sealed class TranscriptAccumulator
             case "error":
             case "conversation.item.input_audio_transcription.failed":
                 // Service messages may echo user input. Never expose the raw payload.
-                throw new ServiceException("Speech transcription failed. Check the deployment, credentials, and connection.");
+                throw new ServiceException(ServiceErrors.ForSpeechEvent(message));
         }
     }
 }

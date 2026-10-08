@@ -29,7 +29,7 @@ public sealed record AppSettings
     {
         var uri = HttpsUri(SpeechEndpoint, "Speech");
         if (uri.AbsolutePath != "/") throw new ConfigurationException("Speech endpoint must be the resource root, without a project or API path.");
-        return new UriBuilder(uri) { Scheme = "wss", Port = -1, Path = "/mai/v1/realtime", Query = "intent=transcription" }.Uri;
+        return new UriBuilder(uri) { Scheme = "wss", Port = -1, Path = "/openai/v1/realtime", Query = "intent=transcription" }.Uri;
     }
     public Uri CleanupUri()
     {

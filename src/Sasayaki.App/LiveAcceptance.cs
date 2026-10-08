@@ -17,10 +17,10 @@ internal static class LiveAcceptance
         {
             var settings = new SettingsStore().Load(); settings.Validate();
             var audio = await File.ReadAllBytesAsync(fixture);
-            if (audio.Length < 160000 || audio.Length > 960000 || audio.Length % 2 != 0)
-                throw new ConfigurationException("Fixture must be 5–30 seconds of raw PCM16 mono 16 kHz audio.");
+            if (audio.Length < 240000 || audio.Length > 1440000 || audio.Length % 2 != 0)
+                throw new ConfigurationException("Fixture must be 5–30 seconds of raw PCM16 mono 24 kHz audio.");
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(50));
-            await using var speech = new StreamingTranscriber(settings); speech.Start(); speech.AcceptGesture();
+            await using var speech = new StreamingTranscriber(settings); speech.Start();
             await speech.WaitUntilReadyAsync(deadline.Token);
             for (var offset = 0; offset < audio.Length; offset += 640)
             {

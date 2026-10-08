@@ -59,7 +59,7 @@ internal sealed class MicrophoneSegment : IAsyncDisposable
         device = string.IsNullOrWhiteSpace(deviceId) ? enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications) : enumerator.GetDevice(deviceId);
         capture = new WasapiCapture(device);
         buffered = new CaptureBuffer(capture.WaveFormat);
-        resampler = new MediaFoundationResampler(buffered, new WaveFormat(16000, 16, 1)) { ResamplerQuality = 60 };
+        resampler = new MediaFoundationResampler(buffered, new WaveFormat(24000, 16, 1)) { ResamplerQuality = 60 };
         framer = new(output);
         capture.DataAvailable += OnData;
         capture.RecordingStopped += (_, e) =>

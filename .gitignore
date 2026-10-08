@@ -9,3 +9,6 @@ TestResults/
 .env
 .env.*
 !*.example
+
+# Personal Azure endpoints and credentials
+/azure-settings.local.md

@@ -50,7 +50,6 @@ public sealed class StreamingTranscriber : IAsyncDisposable
     private readonly CancellationTokenSource lifetime = new();
     private readonly Channel<byte[]> frames = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(250)
         { SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
-    private readonly TaskCompletionSource committedGesture = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource created = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource configured = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<string> result = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -71,7 +70,6 @@ public sealed class StreamingTranscriber : IAsyncDisposable
         settings.ValidateSpeech();
         worker = RunAsync();
     }
-    public void AcceptGesture() => committedGesture.TrySetResult();
     public void Append(byte[] frame)
     {
         if (frame.Length == 0 || frame.Length > 640 || frame.Length % 2 != 0)
@@ -84,7 +82,7 @@ public sealed class StreamingTranscriber : IAsyncDisposable
     {
         if (worker == null) throw new InvalidOperationException("Start the speech session first.");
         Interlocked.Exchange(ref finishRequested, 1);
-        AcceptGesture(); frames.Writer.TryComplete();
+        frames.Writer.TryComplete();
         return await result.Task.WaitAsync(cancellationToken);
     }
     public Task WaitUntilReadyAsync(CancellationToken cancellationToken) => configured.Task.WaitAsync(cancellationToken);
@@ -104,13 +102,12 @@ public sealed class StreamingTranscriber : IAsyncDisposable
                 type = "session.update",
                 session = new { type = "transcription", audio = new { input = new
                 {
-                    format = new { type = "audio/pcm", rate = 16000 },
-                    transcription = new { model = settings.SpeechDeployment, language = "en" },
-                    turn_detection = (object?)null, noise_reduction = (object?)null
+                    format = new { type = "audio/pcm", rate = 24000 },
+                    transcription = new { model = settings.SpeechDeployment, language = "en", delay = "minimal" },
+                    turn_detection = (object?)null
                 } } }
             }), connectTimeout.Token);
             await configured.Task.WaitAsync(connectTimeout.Token);
-            await committedGesture.Task.WaitAsync(lifetime.Token);
             var sent = 0;
             await foreach (var frame in frames.Reader.ReadAllAsync(lifetime.Token))
             {
@@ -158,7 +155,7 @@ public sealed class StreamingTranscriber : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            created.TrySetException(ex); configured.TrySetException(ex); committedGesture.TrySetException(ex);
+            created.TrySetException(ex); configured.TrySetException(ex);
             frames.Writer.TryComplete(ex); result.TrySetException(ex);
             throw;
         }
@@ -170,7 +167,7 @@ public sealed class StreamingTranscriber : IAsyncDisposable
         disposed = true; lifetime.Cancel(); frames.Writer.TryComplete();
         if (worker != null) await worker;
         // Observe faulted completion sources even if a cancelled provisional recording never awaits them.
-        _ = result.Task.Exception; _ = created.Task.Exception; _ = configured.Task.Exception; _ = committedGesture.Task.Exception;
+        _ = result.Task.Exception; _ = created.Task.Exception; _ = configured.Task.Exception;
         await transport.DisposeAsync(); lifetime.Dispose();
     }
 }

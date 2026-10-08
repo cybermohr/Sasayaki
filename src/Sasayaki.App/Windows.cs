@@ -59,7 +59,7 @@ public sealed class SettingsWindow : Window
             panel.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 12, 0, 4) });
             var box = new PasswordBox { Padding = new Thickness(6) }; panel.Children.Add(box); return box;
         }
-        var speechEndpoint = Field("Speech resource root (https://…services.ai.azure.com/)", current.SpeechEndpoint);
+        var speechEndpoint = Field("Speech resource root (https://…openai.azure.com/)", current.SpeechEndpoint);
         var speechDeployment = Field("Speech deployment", current.SpeechDeployment);
         var speechKey = Secret("Speech API key");
         var cleanupEndpoint = Field("Cleanup base URL (https://…openai.azure.com/openai/v1/)", current.CleanupEndpoint);

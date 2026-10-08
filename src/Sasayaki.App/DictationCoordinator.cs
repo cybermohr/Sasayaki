@@ -32,7 +32,6 @@ public sealed class DictationCoordinator(Dispatcher dispatcher, Func<AppSettings
         switch (gesture.Action)
         {
             case GestureAction.Begin: Begin(); break;
-            case GestureAction.CommitGesture: speech?.AcceptGesture(); break;
             case GestureAction.PauseCapture:
                 if (microphone != null) pause = microphone.StopAsync();
                 break;

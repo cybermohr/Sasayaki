@@ -62,7 +62,7 @@ visible insertion.
 ## Live service smoke check
 
 After saving settings, supply a nonpersonal, known utterance as raw PCM16
-little-endian mono 16 kHz (no WAV header):
+little-endian mono 24 kHz (no WAV header):
 
 ```powershell
 pwsh -File scripts/Test-Acceptance.ps1 -Mode LiveAzure -FixturePcm C:\fixtures\known-utterance.pcm

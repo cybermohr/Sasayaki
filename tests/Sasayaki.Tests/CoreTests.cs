@@ -86,6 +86,50 @@ public sealed class CoreTests
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(new { choices = new[] { new { finish_reason = reason, message = new { content, refusal } } } }));
         Assert.Throws<ServiceException>(() => TextCleaner.ParseResult(json.RootElement));
     }
+
+    [Theory]
+    [InlineData("error", "unimplemented", "unimplemented")]
+    [InlineData("conversation.item.input_audio_transcription.failed", "unimplemented", "unimplemented")]
+    [InlineData("error", "rate_limit_exceeded", "rate limited")]
+    [InlineData("error", "input_audio_buffer_commit_empty", "too little audio")]
+    public void SpeechErrorsGiveActionableMessagesWithoutEchoingServicePayload(string eventType, string code, string expected)
+    {
+        var accumulator = new TranscriptAccumulator();
+        using var partial = JsonDocument.Parse("{\"type\":\"conversation.item.input_audio_transcription.delta\",\"delta\":\"Retained text\"}");
+        accumulator.Accept(partial.RootElement);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            type = eventType, error = new { type = "server_error", code, message = "private dictated text and secret-key", param = "private parameter" }
+        }));
+        var exception = Assert.Throws<ServiceException>(() => accumulator.Accept(json.RootElement));
+        Assert.Contains(expected, exception.Message);
+        Assert.DoesNotContain("private", exception.Message);
+        Assert.DoesNotContain("secret-key", exception.Message);
+        Assert.Equal("Retained text", accumulator.Stable);
+        Assert.Null(accumulator.Final);
+    }
+
+    [Theory]
+    [InlineData("{\"type\":\"error\"}")]
+    [InlineData("{\"type\":\"error\",\"error\":null}")]
+    [InlineData("{\"type\":\"error\",\"error\":\"private payload\"}")]
+    [InlineData("{\"type\":\"error\",\"error\":{\"code\":123,\"type\":false}}")]
+    [InlineData("{\"type\":\"error\",\"error\":{\"code\":\"private-key\",\"type\":\"private-text\"}}")]
+    public void UnknownSpeechErrorsUseSafeFallback(string payload)
+    {
+        using var json = JsonDocument.Parse(payload);
+        var exception = Assert.Throws<ServiceException>(() => new TranscriptAccumulator().Accept(json.RootElement));
+        Assert.Equal("Speech transcription failed. Check the deployment, credentials, and connection.", exception.Message);
+    }
+
+    [Fact]
+    public void UnknownServerErrorDoesNotEchoUnknownCode()
+    {
+        using var json = JsonDocument.Parse("{\"type\":\"error\",\"error\":{\"type\":\"server_error\",\"code\":\"private-key\"}}");
+        var exception = Assert.Throws<ServiceException>(() => new TranscriptAccumulator().Accept(json.RootElement));
+        Assert.Contains("server error", exception.Message);
+        Assert.DoesNotContain("private-key", exception.Message);
+    }
     [Fact]
     public void CleanupAcceptsCompleteText()
     {
