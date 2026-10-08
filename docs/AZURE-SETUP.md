@@ -181,7 +181,8 @@ protected for your Windows account outside this repository.
 
 7. **Configure and run Sasayaki.**
 
-   Launch `artifacts/win-x64/Sasayaki.exe`. Settings opens when configuration is
+   Install the MSI using the [README instructions](../README.md#install-update-remove),
+   then open Sasayaki from the Start menu. Settings opens when configuration is
    missing or invalid. Enter the six connection values from step 6, select your
    microphone, and choose your recording shortcut. The default is **Ctrl+Win**.
 

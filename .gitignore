@@ -2,6 +2,8 @@
 **/obj/
 artifacts/
 TestResults/
+installer-lifecycle-*/
+/clone-run/
 .vs/
 *.user
 *.suo

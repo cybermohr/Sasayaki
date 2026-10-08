@@ -9,7 +9,7 @@ The two-second target is unmeasured; see the acceptance walkthrough for full val
 
 ## Before first run
 
-Create the two deployments using [Azure setup](clone-run/AZURE-SETUP.md), then
+Create the two deployments using [Azure setup](docs/AZURE-SETUP.md), then
 have these six values ready to enter in the app's Settings:
 
 | Setting | Where to find it / expected value |
@@ -95,7 +95,7 @@ pwsh -File scripts/Test-Acceptance.ps1 -Mode Offline
 Requires .NET 10 SDK. The build script also finds the SDK from the interrupted
 session at `%LOCALAPPDATA%\Sasayaki\toolchain\dotnet`. The installed application
 does not need that SDK. See [acceptance steps](docs/ACCEPTANCE.md) and
-[build status](clone-run/BUILD-STATUS.md) for actual evidence and open checks.
+[installer validation](docs/INSTALLER-ACCEPTANCE.md) for actual evidence and open checks.
 
 The installer build restores WiX CLI 4.0.6 from the checked-in tool manifest
 and WiX UI/Util 4.0.6 extensions with SHA-256 verification, using Microsoft's

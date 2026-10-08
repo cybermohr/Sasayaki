@@ -20,7 +20,7 @@ The displayed clipboard metadata is a useful check, not proof of all format/hist
 requirements. Text-change timestamps are observations, not automated latency certification.
 
 1. Launch `artifacts/win-x64/Sasayaki.exe`. Configure Azure in Settings using
-   [the setup guide](../clone-run/AZURE-SETUP.md). Use Test Azure connections.
+   [the setup guide](AZURE-SETUP.md). Use Test Azure connections.
 2. Focus the instrumented target. Hold Ctrl+Win, speak a known short phrase, and
    release. Check actual complete output, selection replacement, punctuation,
    no auto-submission, and no foreground change from the recording overlay.
