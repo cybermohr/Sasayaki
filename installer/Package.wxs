@@ -1,0 +1,101 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Sasayaki" Manufacturer="Sasayaki" Version="$(var.InstallerVersion)"
+           Language="1033" UpgradeCode="BAA81940-B8B2-49A7-912D-C8EBFC98A47C"
+           Scope="perUserOrMachine" InstallerVersion="500" Compressed="yes">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Sasayaki is already installed. Uninstall it before installing an older version."
+                  Schedule="afterInstallInitialize" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Icon Id="SasayakiIcon" SourceFile="$(var.IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="SasayakiIcon" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
+    <Property Id="SASAYAKISCOPE" Value="user" Secure="yes" />
+    <Property Id="USERINSTALLPATH" Secure="yes">
+      <RegistrySearch Id="FindUserInstall" Root="HKCU" Key="Software\Sasayaki\Installer" Name="InstallPath" Type="raw" Bitness="always64" />
+    </Property>
+    <Property Id="MACHINEINSTALLPATH" Secure="yes">
+      <RegistrySearch Id="FindMachineInstall" Root="HKLM" Key="Software\Sasayaki\Installer" Name="InstallPath" Type="raw" Bitness="always64" />
+    </Property>
+    <!-- Dual-purpose MSI remaps standard folder properties when opened per-user.
+         Read the actual Windows paths so changing scope in the UI cannot reuse
+         the per-user mapping for a machine install. -->
+    <Property Id="MACHINEPROGRAMFILES" Secure="yes">
+      <RegistrySearch Id="FindMachineProgramFiles" Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion" Name="ProgramFilesDir" Type="raw" Bitness="always64" />
+    </Property>
+    <Property Id="MACHINEPROGRAMSMENU" Secure="yes">
+      <RegistrySearch Id="FindMachineProgramsMenu" Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders" Name="Common Programs" Type="raw" Bitness="always64" />
+    </Property>
+    <Property Id="USERPROGRAMSMENU" Secure="yes">
+      <RegistrySearch Id="FindUserProgramsMenu" Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders" Name="Programs" Type="raw" Bitness="always64" />
+    </Property>
+    <StandardDirectory Id="ProgramFiles64Folder" />
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="UserProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Sasayaki" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="SasayakiMenuFolder" Name="Sasayaki">
+        <Component Id="StartMenu" Guid="EA0EE1AA-763D-4EDC-B7F4-559D88740E53" Bitness="always64">
+          <Shortcut Id="SasayakiShortcut" Name="Sasayaki" Target="[INSTALLFOLDER]Sasayaki.exe"
+                    WorkingDirectory="INSTALLFOLDER" Icon="SasayakiIcon" />
+          <RemoveFolder Id="RemoveSasayakiMenu" On="uninstall" />
+          <RegistryValue Root="HKMU" Key="Software\Sasayaki\Installer" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="InstallMarker" Guid="4BFE9DC2-AC96-46F6-82C6-0B5D61FADFB4" Bitness="always64">
+        <RegistryValue Root="HKMU" Key="Software\Sasayaki\Installer" Name="InstallPath" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+        <RegistryValue Root="HKMU" Key="Software\Sasayaki\Installer" Name="Version" Type="string" Value="[ProductVersion]" />
+        <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+      </Component>
+    </DirectoryRef>
+    <Feature Id="Application" Title="Sasayaki" Level="1">
+      <ComponentGroupRef Id="PublishedFiles" />
+      <ComponentRef Id="StartMenu" />
+      <ComponentRef Id="InstallMarker" />
+    </Feature>
+
+    <!-- Default upgrades to their existing scope; explicit command-line choices still get checked. -->
+    <CustomAction Id="DefaultMachineScope" Property="ALLUSERS" Value="1" />
+    <CustomAction Id="DefaultMachineInstallPerUser" Property="MSIINSTALLPERUSER" Value="" />
+    <SetProperty Id="SASAYAKISCOPE" Value="machine" Before="CostInitialize" Sequence="both"
+                 Condition="MACHINEINSTALLPATH AND NOT USERINSTALLPATH" />
+    <SetProperty Id="INSTALLFOLDER" Value="[MACHINEPROGRAMFILES]\Sasayaki" Before="CostFinalize" Sequence="both"
+                 Condition="ALLUSERS = 1 OR (ALLUSERS = 2 AND NOT MSIINSTALLPERUSER)" />
+    <CustomAction Id="SetMachineMenu" Property="ProgramMenuFolder" Value="[MACHINEPROGRAMSMENU]\" />
+    <CustomAction Id="SetUserMenu" Property="ProgramMenuFolder" Value="[USERPROGRAMSMENU]\" />
+    <CustomAction Id="RejectScopeSwitch" Error="Sasayaki is installed in a different scope. Uninstall it before switching between Just me and Everyone on this computer. Your saved settings will be preserved." />
+    <CustomAction Id="RejectRunningApplication" Error="Quit Sasayaki from its system tray menu, then retry Setup. Setup will not close a recording for you." />
+    <CustomAction Id="ClearRunningApplication" Property="SASAYAKI_RUNNING" Value="" />
+    <util:CloseApplication Id="CheckSasayaki" Target="Sasayaki.exe" Property="SASAYAKI_RUNNING"
+                           Description="Please finish any recording and quit Sasayaki from its system tray menu. Choose Retry when it has closed."
+                           PromptToContinue="yes" CloseMessage="no" EndSessionMessage="no"
+                           ElevatedCloseMessage="no" ElevatedEndSessionMessage="no" RebootPrompt="no" Timeout="1" />
+    <InstallUISequence>
+      <Custom Action="DefaultMachineScope" After="AppSearch" Condition="MACHINEINSTALLPATH AND NOT USERINSTALLPATH AND ALLUSERS = 2" />
+      <Custom Action="DefaultMachineInstallPerUser" After="DefaultMachineScope" Condition="ALLUSERS = 1" />
+      <FindRelatedProducts After="DefaultMachineInstallPerUser" />
+      <Custom Action="SetMachineMenu" Before="CostFinalize" Condition="ALLUSERS = 1 OR (ALLUSERS = 2 AND NOT MSIINSTALLPERUSER)" />
+      <Custom Action="SetUserMenu" Before="CostFinalize" Condition="NOT ALLUSERS OR (ALLUSERS = 2 AND MSIINSTALLPERUSER)" />
+    </InstallUISequence>
+    <InstallExecuteSequence>
+      <Custom Action="DefaultMachineScope" After="AppSearch" Condition="MACHINEINSTALLPATH AND NOT USERINSTALLPATH AND ALLUSERS = 2" />
+      <Custom Action="DefaultMachineInstallPerUser" After="DefaultMachineScope" Condition="ALLUSERS = 1" />
+      <FindRelatedProducts After="DefaultMachineInstallPerUser" />
+      <Custom Action="SetMachineMenu" Before="CostFinalize" Condition="ALLUSERS = 1 OR (ALLUSERS = 2 AND NOT MSIINSTALLPERUSER)" />
+      <Custom Action="SetUserMenu" Before="CostFinalize" Condition="NOT ALLUSERS OR (ALLUSERS = 2 AND MSIINSTALLPERUSER)" />
+      <Custom Action="RejectScopeSwitch" Before="InstallInitialize"
+              Condition="NOT REMOVE AND ((USERINSTALLPATH AND ALLUSERS = 1) OR (MACHINEINSTALLPATH AND NOT ALLUSERS))" />
+      <Custom Action="ClearRunningApplication" Before="Wix4CloseApplications_X64" />
+      <Custom Action="Wix4CloseApplications_X64" Before="RejectScopeSwitch" />
+      <Custom Action="RejectRunningApplication" After="Wix4CloseApplications_X64" Condition="SASAYAKI_RUNNING" />
+    </InstallExecuteSequence>
+    <!-- UI-thread launch runs as the user who opened Setup, after the elevated transaction. -->
+    <CustomAction Id="SetLaunchTarget" Property="WixShellExecTarget" Value="[INSTALLFOLDER]Sasayaki.exe" />
+    <CustomAction Id="LaunchSasayaki" BinaryRef="Wix4UtilCA_X64" DllEntry="WixShellExec"
+                  Execute="immediate" Impersonate="yes" Return="ignore" />
+    <UIRef Id="SasayakiWizard" />
+  </Package>
+</Wix>

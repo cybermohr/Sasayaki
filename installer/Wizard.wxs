@@ -1,0 +1,119 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <WixVariable Id="WixUIBannerBmp" Value="$(var.StagingPath)/banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(var.StagingPath)/dialog.bmp" />
+    <Binary Id="MicrophoneArtwork" SourceFile="$(var.IconPath)" />
+    <UI Id="SasayakiWizard">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Segoe UI" Size="9" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Segoe UI" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Segoe UI" Size="10" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+      <DialogRef Id="MaintenanceWelcomeDlg" />
+      <DialogRef Id="MaintenanceTypeDlg" />
+      <DialogRef Id="VerifyReadyDlg" />
+
+      <Dialog Id="SasayakiWelcome" Width="370" Height="270" Title="Sasayaki Setup">
+        <Control Id="Icon" Type="Icon" X="20" Y="20" Width="48" Height="48" Text="MicrophoneArtwork" FixedSize="yes" IconSize="48" />
+        <Control Id="Title" Type="Text" X="85" Y="24" Width="265" Height="40" Text="{\WixUI_Font_Bigger}Welcome to Sasayaki Setup" />
+        <Control Id="Body" Type="Text" X="25" Y="95" Width="320" Height="100" Text="Setup will install Sasayaki [ProductVersion] and its bundled .NET runtime.&#13;&#10;&#13;&#10;Finish any recording and quit Sasayaki before installing or updating. Your saved settings and protected Azure keys are preserved." />
+        <Control Id="Line" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next &gt;">
+          <Publish Event="NewDialog" Value="SasayakiScope" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="SasayakiScope" Width="370" Height="270" Title="Sasayaki Setup">
+        <Control Id="Icon" Type="Icon" X="310" Y="8" Width="32" Height="32" Text="MicrophoneArtwork" FixedSize="yes" IconSize="32" />
+        <Control Id="Title" Type="Text" X="20" Y="15" Width="280" Height="25" Text="{\WixUI_Font_Title}Who should have Sasayaki?" />
+        <Control Id="Scope" Type="RadioButtonGroup" X="25" Y="60" Width="320" Height="115" Property="SASAYAKISCOPE">
+          <RadioButtonGroup Property="SASAYAKISCOPE">
+            <RadioButton Value="user" X="0" Y="0" Width="300" Height="18" Text="Just me" />
+            <RadioButton Value="machine" X="0" Y="65" Width="300" Height="18" Text="Everyone on this computer" />
+          </RadioButtonGroup>
+        </Control>
+        <Control Id="UserPath" Type="Text" X="42" Y="82" Width="300" Height="32" Text="Installs under your local Programs folder. No administrator rights needed." />
+        <Control Id="MachinePath" Type="Text" X="42" Y="147" Width="300" Height="32" Text="Installs under Program Files. Administrator approval is required." />
+        <Control Id="Upgrade" Type="Text" X="25" Y="191" Width="320" Height="32" Text="Updates keep the existing scope. To change scope, uninstall first; settings are preserved." />
+        <Control Id="Line" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="&lt; Back">
+          <Publish Event="NewDialog" Value="SasayakiWelcome" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next &gt;">
+          <Publish Property="ALLUSERS" Value="{}" Order="1" Condition="SASAYAKISCOPE = &quot;user&quot;" />
+          <Publish Property="MSIINSTALLPERUSER" Value="1" Order="2" Condition="SASAYAKISCOPE = &quot;user&quot;" />
+          <Publish Property="INSTALLFOLDER" Value="[LocalAppDataFolder]Programs\Sasayaki\" Order="3" Condition="SASAYAKISCOPE = &quot;user&quot;" />
+          <Publish Property="ALLUSERS" Value="1" Order="1" Condition="SASAYAKISCOPE = &quot;machine&quot;" />
+          <Publish Property="MSIINSTALLPERUSER" Value="{}" Order="2" Condition="SASAYAKISCOPE = &quot;machine&quot;" />
+          <Publish Property="INSTALLFOLDER" Value="[MACHINEPROGRAMFILES]\Sasayaki\" Order="3" Condition="SASAYAKISCOPE = &quot;machine&quot;" />
+          <Publish Property="ProgramMenuFolder" Value="[USERPROGRAMSMENU]\" Order="4" Condition="SASAYAKISCOPE = &quot;user&quot;" />
+          <Publish Property="ProgramMenuFolder" Value="[MACHINEPROGRAMSMENU]\" Order="4" Condition="SASAYAKISCOPE = &quot;machine&quot;" />
+          <Publish Event="DoAction" Value="RejectScopeSwitch" Order="5" Condition="(USERINSTALLPATH AND SASAYAKISCOPE = &quot;machine&quot;) OR (MACHINEINSTALLPATH AND SASAYAKISCOPE = &quot;user&quot;)" />
+          <Publish Event="SetTargetPath" Value="INSTALLFOLDER" Order="6" />
+          <Publish Event="SetTargetPath" Value="ProgramMenuFolder" Order="7" />
+          <Publish Event="NewDialog" Value="SasayakiConfirm" Order="8" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="SasayakiConfirm" Width="370" Height="270" Title="Sasayaki Setup">
+        <Control Id="Icon" Type="Icon" X="310" Y="8" Width="32" Height="32" Text="MicrophoneArtwork" FixedSize="yes" IconSize="32" />
+        <Control Id="Title" Type="Text" X="20" Y="15" Width="280" Height="25" Text="{\WixUI_Font_Title}Ready to install Sasayaki" />
+        <Control Id="ScopeUser" Type="Text" X="25" Y="65" Width="320" Height="20" Text="Install for: Just me" Hidden="yes" ShowCondition="SASAYAKISCOPE = &quot;user&quot;" />
+        <Control Id="ScopeMachine" Type="Text" X="25" Y="65" Width="320" Height="20" Text="Install for: Everyone on this computer" Hidden="yes" ShowCondition="SASAYAKISCOPE = &quot;machine&quot;" />
+        <Control Id="Path" Type="Text" X="25" Y="95" Width="320" Height="45" Text="Destination:&#13;&#10;[INSTALLFOLDER]" />
+        <Control Id="Body" Type="Text" X="25" Y="150" Width="320" Height="65" Text="A Start menu shortcut will be added.&#13;&#10;&#13;&#10;Start at login remains controlled through Sasayaki Settings." />
+        <Control Id="Line" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="&lt; Back">
+          <Publish Event="NewDialog" Value="SasayakiScope" />
+        </Control>
+        <Control Id="InstallUser" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Install" Hidden="yes" ShowCondition="SASAYAKISCOPE = &quot;user&quot;">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="InstallMachine" Type="PushButton" X="236" Y="243" Width="56" Height="17" ElevationShield="yes" Text="Install" Hidden="yes" ShowCondition="SASAYAKISCOPE = &quot;machine&quot;">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="SasayakiComplete" Width="370" Height="270" Title="Sasayaki Setup">
+        <Control Id="Icon" Type="Icon" X="20" Y="20" Width="48" Height="48" Text="MicrophoneArtwork" FixedSize="yes" IconSize="48" />
+        <Control Id="Title" Type="Text" X="85" Y="24" Width="265" Height="40" Text="{\WixUI_Font_Bigger}Sasayaki Setup completed" />
+        <Control Id="Body" Type="Text" X="25" Y="95" Width="320" Height="55" Text="Your saved settings and protected Azure keys have been preserved.&#13;&#10;&#13;&#10;Click Finish to close Setup." />
+        <Control Id="Launch" Type="CheckBox" X="25" Y="170" Width="300" Height="18" Property="LAUNCHSASAYAKI" CheckBoxValue="1" Text="Launch Sasayaki" Hidden="yes" ShowCondition="NOT Installed AND NOT REMOVE" />
+        <Control Id="Line" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Finish" Type="PushButton" X="304" Y="243" Width="56" Height="17" Default="yes" Cancel="yes" Text="Finish">
+          <Publish Event="DoAction" Value="SetLaunchTarget" Order="1" Condition="LAUNCHSASAYAKI = 1 AND NOT Installed AND NOT REMOVE" />
+          <Publish Event="DoAction" Value="LaunchSasayaki" Order="2" Condition="LAUNCHSASAYAKI = 1 AND NOT Installed AND NOT REMOVE" />
+          <Publish Event="EndDialog" Value="Return" Order="3" />
+        </Control>
+      </Dialog>
+
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <InstallUISequence>
+        <Show Dialog="SasayakiWelcome" After="CostFinalize" Condition="NOT Installed" />
+        <Show Dialog="MaintenanceWelcomeDlg" Before="SasayakiWelcome" Condition="Installed AND NOT RESUME AND NOT Preselected" />
+        <Show Dialog="SasayakiComplete" OnExit="success" />
+      </InstallUISequence>
+    </UI>
+    <UIRef Id="WixUI_Common" />
+  </Fragment>
+</Wix>

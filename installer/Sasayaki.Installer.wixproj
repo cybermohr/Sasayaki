@@ -1,0 +1,11 @@
+<Project DefaultTargets="Build">
+  <!-- Use the pinned local WiX CLI: its SDK package is absent from dotnet-public. -->
+  <PropertyGroup>
+    <InstallerVersion Condition="'$(InstallerVersion)' == ''">1.0.0</InstallerVersion>
+    <OutputPath>$(MSBuildThisFileDirectory)..\artifacts\installer\</OutputPath>
+  </PropertyGroup>
+  <Target Name="Build">
+    <Error Condition="'$(StagingPath)' == '' or '$(WixExtensionsPath)' == '' or '$(DotnetPath)' == ''" Text="Build using scripts/Build-Installer.ps1, which publishes a fresh payload and restores pinned WiX dependencies." />
+    <Exec WorkingDirectory="$(MSBuildThisFileDirectory).." Command="&quot;$(DotnetPath)&quot; tool run wix -- build installer/Package.wxs installer/Wizard.wxs &quot;$(StagingPath)/Payload.wxs&quot; -arch x64 -culture en-US -ext &quot;$(WixExtensionsPath)/ui/wixext4/WixToolset.UI.wixext.dll&quot; -ext &quot;$(WixExtensionsPath)/util/wixext4/WixToolset.Util.wixext.dll&quot; -d InstallerVersion=$(InstallerVersion) -d StagingPath=&quot;$(StagingPath)&quot; -d IconPath=&quot;$(MSBuildThisFileDirectory)../src/Sasayaki.App/Assets/Sasayaki.ico&quot; -o &quot;$(OutputPath)Sasayaki-$(InstallerVersion)-x64.msi&quot; -intermediateFolder &quot;$(StagingPath)/wix-obj&quot;" />
+  </Target>
+</Project>

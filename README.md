@@ -4,7 +4,7 @@ Native Windows dictation using Ctrl+Win, Azure streaming transcription, and ligh
 text cleanup. Text is submitted at the current focused caret using Unicode input;
 the app does not use the clipboard.
 
-**Status:** desktop build available; the user reports the application works.
+**Status:** unsigned x64 MSI available; the user reports the application works.
 The two-second target is unmeasured; see the acceptance walkthrough for full validation.
 
 ## Before first run
@@ -41,8 +41,9 @@ name (or enter the deployment name you choose).
 
 ## Run
 
-Open `artifacts/win-x64/Sasayaki.exe`. Keep the entire published folder together;
-the build includes the .NET runtime. Settings opens on first launch. Enter the
+Install `artifacts/installer/Sasayaki-1.0.0-x64.msi` and open Sasayaki from the
+Start menu. The installer includes the .NET runtime.
+Settings opens on first launch. Enter the
 six values above, using the masked fields for keys, test the connections, and
 save. Saved keys are protected for
 your Windows account under `%LOCALAPPDATA%\Sasayaki`, outside this repository.
@@ -87,21 +88,58 @@ incomplete when transcription/cleanup fails.
 ## Build and verify
 
 ```powershell
-pwsh -File scripts/Build.ps1 -Publish
+pwsh -File scripts/Build-Installer.ps1 -Version 1.0.0
 pwsh -File scripts/Test-Acceptance.ps1 -Mode Offline
 ```
 
 Requires .NET 10 SDK. The build script also finds the SDK from the interrupted
-session at `%LOCALAPPDATA%\Sasayaki\toolchain\dotnet`. The published executable
+session at `%LOCALAPPDATA%\Sasayaki\toolchain\dotnet`. The installed application
 does not need that SDK. See [acceptance steps](docs/ACCEPTANCE.md) and
 [build status](clone-run/BUILD-STATUS.md) for actual evidence and open checks.
 
+The installer build restores WiX CLI 4.0.6 from the checked-in tool manifest
+and WiX UI/Util 4.0.6 extensions with SHA-256 verification, using Microsoft's
+public package mirror. It does not need `api.nuget.org` or a separately installed
+WiX toolset. The WiX project uses the CLI because the mirror lacks the WiX SDK
+package. Each build publishes fresh application files into its own
+`artifacts/installer-staging` directory, applies the supplied version to the app
+and MSI, and produces one MSI with embedded cabinets under `artifacts/installer`.
+MSI table inspection runs automatically after building. Run it separately with:
+
+```powershell
+pwsh -File scripts/Test-Installer.ps1 -Path artifacts/installer/Sasayaki-1.0.0-x64.msi -Version 1.0.0
+```
+
+Add `-CheckSession` to verify both destination and Start menu scopes using MSI
+costing sessions; this does not install the application.
+
+Versions use `major.minor.build`; major/minor must be at most 255 and build at most
+65534. Increment the version for every released MSI. The initial MSI is unsigned;
+its publisher metadata is **Sasayaki**, but Windows cannot verify a signing
+publisher. See [installer validation](docs/INSTALLER-ACCEPTANCE.md) for evidence
+and the isolated Windows test procedure.
+
 ## Install, update, remove
 
-Copy the complete published folder to a permanent local folder, for example
-`%LOCALAPPDATA%\Programs\Sasayaki`, and run the executable from there. Optional
-start-at-login uses that executable path and defaults off. To update, quit via
-the tray and replace the whole application folder. To remove, turn off
-start-at-login in Settings, quit, and remove your installed folder. Remove
-`%LOCALAPPDATA%\Sasayaki\settings.json` separately if you also want to remove saved
-configuration. No Azure resources are provisioned or deleted by the app.
+Open the MSI normally from Explorer. Choose **Just me** (the default) to install
+in `%LOCALAPPDATA%\Programs\Sasayaki`, or **Everyone on this computer** to install
+in `%ProgramFiles%\Sasayaki` with administrator approval. Setup creates a Start
+menu shortcut in the selected scope and no desktop shortcut. The completion
+page offers an unchecked **Launch Sasayaki** option, which launches from the
+original user's Setup session. Each Windows user keeps their own settings and
+account-protected keys; the MSI contains no Azure credentials.
+
+To upgrade, finish recording, quit Sasayaki from its tray menu, and open the newer
+MSI. Setup selects the existing scope. Older versions are rejected. To change
+scope, uninstall first, then reinstall; saved settings remain available. Use
+Windows **Installed apps > Sasayaki** or reopen the original MSI to repair or
+uninstall. Repair restores missing packaged files. Setup asks you to quit a
+running Sasayaki and will not terminate a recording; choosing Ignore while it
+still runs aborts the installation.
+
+Before uninstalling, turn off **Start at login** in Sasayaki Settings, then quit
+from the tray. The app owns this per-user startup preference; the installer does
+not change it. Uninstall removes packaged files and its Start menu shortcut,
+preserving `%LOCALAPPDATA%\Sasayaki\settings.json` and its protected keys. Delete
+that file separately only if you also want to erase saved configuration. No
+Azure resources are provisioned or deleted by installation or removal.
