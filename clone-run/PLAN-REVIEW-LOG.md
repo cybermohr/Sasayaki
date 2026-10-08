@@ -39,15 +39,10 @@ Revisions address the material specification gaps found in Round 1.
 
 Remaining engineering risks are explicit and must be tested before the app is
 called complete: modifier suppression/replay on Windows, Unicode delivery across
-controls, focus races, preview access, model fidelity, and full-pipeline latency.
-None has been resolved by a live prototype during this documentation task.
+controls, focus races, model access, model fidelity, and full-pipeline latency.
 The review does not waive these requirements or accept a reduced latency target.
 
 ## Documentation verification
 
-- Both PowerShell code blocks in AZURE-SETUP.md parsed successfully with the local
-  PowerShell AST parser. No network requests in those examples were executed.
-- dotnet host is present but `dotnet --list-sdks` produced no SDK entries.
-- Azure CLI was not found on PATH; the guide uses portal setup.
-- Azure deployment, microphone streaming, cleanup inference, native-key tests,
-  text insertion, application build, and latency tests: NOT RUN.
+Current build and validation evidence is tracked in [BUILD-STATUS.md](BUILD-STATUS.md).
+The setup guide contains a single deployment workflow; it is not a test-results log.

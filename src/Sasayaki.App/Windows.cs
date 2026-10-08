@@ -13,14 +13,23 @@ public sealed class OverlayWindow : Window
 {
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern nint GetStyle(nint window, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern nint SetStyle(nint window, int index, nint style);
-    private readonly TextBlock label = new() { Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, FontSize = 15 };
-    private readonly ProgressBar meter = new() { Height = 4, Maximum = 1, Margin = new Thickness(0, 10, 0, 0) };
+    private readonly TextBlock label = new() { Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, FontSize = 13, Margin = new Thickness(4, 0, 4, 8) };
+    private readonly VoiceWaveform waveform = new() { Height = 80 };
+    private bool recording;
     public OverlayWindow()
     {
-        Width = 430; SizeToContent = SizeToContent.Height; ShowActivated = false; ShowInTaskbar = false;
+        Width = 320; SizeToContent = SizeToContent.Height; ShowActivated = false; ShowInTaskbar = false;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; Topmost = true;
-        Background = new SolidColorBrush(Color.FromRgb(28, 33, 44));
-        var panel = new StackPanel { Margin = new Thickness(20) }; panel.Children.Add(label); panel.Children.Add(meter); Content = panel;
+        AllowsTransparency = true; Background = Brushes.Transparent;
+        var panel = new StackPanel { Margin = new Thickness(14, 8, 14, 8) };
+        panel.Children.Add(waveform); panel.Children.Add(label);
+        Content = new Border
+        {
+            CornerRadius = new CornerRadius(22),
+            Background = new SolidColorBrush(Color.FromRgb(7, 7, 16)),
+            Child = panel
+        };
+        SizeChanged += (_, _) => PositionOverlay();
         SourceInitialized += (_, _) =>
         {
             var handle = new WindowInteropHelper(this).Handle;
@@ -32,23 +41,56 @@ public sealed class OverlayWindow : Window
     { if (message == 0x21) { handled = true; return 3; } return 0; }
     public void SetStatus(string status)
     {
-        label.Text = status; meter.Value = 0;
-        Left = SystemParameters.WorkArea.Right - Width - 24;
-        Top = SystemParameters.WorkArea.Bottom - 140;
+        label.Text = status;
+        UpdateLabelVisibility();
+        PositionOverlay();
         if (!IsVisible) Show();
     }
-    public void SetLevel(float value) => meter.Value = value;
+    private void PositionOverlay()
+    {
+        Left = Math.Max(SystemParameters.WorkArea.Left, SystemParameters.WorkArea.Right - Width - 24);
+        Top = Math.Max(SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - ActualHeight - 24);
+    }
+    public void SetLevel(float value) => waveform.SetLevel(value);
+    public void SetRecording(bool value)
+    {
+        recording = value;
+        waveform.SetRecording(value);
+        UpdateLabelVisibility();
+    }
+    private void UpdateLabelVisibility()
+    {
+        var recordingStatus = label.Text.StartsWith("Recording", StringComparison.Ordinal)
+            || label.Text.StartsWith("Hands-free recording", StringComparison.Ordinal);
+        label.Visibility = recording || recordingStatus ? Visibility.Collapsed : Visibility.Visible;
+    }
 }
 
 public sealed class SettingsWindow : Window
 {
     public SettingsWindow(AppSettings current, Action<AppSettings> save)
     {
-        Title = "Sasayaki settings"; Width = 580; Height = 690; WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        Title = "Sasayaki settings"; Width = 580; Height = 780; WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri("pack://application:,,,/Sasayaki;component/Assets/Sasayaki.ico"));
         var panel = new StackPanel { Margin = new Thickness(24) };
         Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         panel.Children.Add(new TextBlock { Text = "Azure dictation", FontSize = 25, Margin = new Thickness(0, 0, 0, 12) });
-        panel.Children.Add(new TextBlock { Text = "Ctrl+Win: hold to dictate, or double-press to start and stop hands-free. Keys are protected for your Windows account. Leave key fields blank to keep saved keys.", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = "Hold your shortcut to dictate, or double-press to start and stop hands-free. Edit endpoint URLs and replace API keys below. Keys are protected for your Windows account. Leave key fields blank to keep saved keys.", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = "Recording shortcut", FontSize = 17, Margin = new Thickness(0, 16, 0, 6) });
+        var modifierChoices = new[] { "Ctrl+Win (default)", "Ctrl+Alt", "Ctrl+Shift", "Alt+Shift", "Ctrl+Alt+Shift" };
+        var modifierValues = new uint[] { 10, 3, 6, 5, 7 };
+        var modifiers = new ComboBox { ItemsSource = modifierChoices, SelectedIndex = Math.Max(0, Array.IndexOf(modifierValues, current.Hotkey.Modifiers)) };
+        panel.Children.Add(modifiers);
+        var keyValues = Enumerable.Range(0x41, 26).Concat(Enumerable.Range(0x30, 10)).Concat(Enumerable.Range(0x70, 11)).Select(k => (ushort)k).ToArray();
+        var shortcutKey = new ComboBox
+        {
+            ItemsSource = keyValues.Select(k => k >= 0x70 ? $"F{k - 0x6F}" : ((char)k).ToString()).ToArray(),
+            SelectedIndex = Math.Max(0, Array.IndexOf(keyValues, current.Hotkey.Key)),
+            IsEnabled = !current.Hotkey.IsDefault, Margin = new Thickness(0, 6, 0, 6)
+        };
+        modifiers.SelectionChanged += (_, _) => shortcutKey.IsEnabled = modifiers.SelectedIndex != 0;
+        panel.Children.Add(shortcutKey);
+        panel.Children.Add(new TextBlock { Text = "Save checks and reserves custom global shortcuts with Windows. If unavailable, choose another. Shortcuts handled privately by other apps cannot be detected. The default Ctrl+Win modifier-only gesture cannot be checked this way. Escape always cancels.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
         TextBox Field(string label, string value)
         {
             panel.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 12, 0, 4) });
@@ -79,7 +121,8 @@ public sealed class SettingsWindow : Window
             SpeechKey = speechKey.Password.Length == 0 ? current.SpeechKey : speechKey.Password,
             CleanupEndpoint = cleanupEndpoint.Text.Trim(), CleanupDeployment = cleanupDeployment.Text.Trim(),
             CleanupKey = cleanupKey.Password.Length == 0 ? current.CleanupKey : cleanupKey.Password,
-            MicrophoneId = microphones.SelectedValue as string ?? "", StartAtLogin = login.IsChecked == true
+            MicrophoneId = microphones.SelectedValue as string ?? "", StartAtLogin = login.IsChecked == true,
+            Hotkey = modifiers.SelectedIndex == 0 ? new() : new HotkeySettings { Modifiers = modifierValues[modifiers.SelectedIndex], Key = keyValues[shortcutKey.SelectedIndex] }
         };
         var test = new Button { Content = "Test Azure connections (uses cleanup tokens)", Padding = new Thickness(8), Margin = new Thickness(0, 0, 0, 8) };
         test.Click += async (_, _) =>

@@ -4,8 +4,9 @@ public readonly record struct KeyTransition(ushort Key, bool Down);
 public sealed record KeyRoute(bool Suppress, string? Gesture, KeyTransition[] Replay);
 
 /// <summary>Tracks physical keys separately from keys hidden from the foreground application.</summary>
-public sealed class KeyboardRouter
+public sealed class KeyboardRouter(HotkeySettings? shortcut = null)
 {
+    private readonly HotkeySettings shortcut = shortcut ?? new();
     private readonly HashSet<ushort> physical = [], suppressed = [];
     private bool chord;
     public void Reset() { physical.Clear(); suppressed.Clear(); chord = false; }
@@ -14,9 +15,9 @@ public sealed class KeyboardRouter
         if (injected) return new(false, null, []);
         var repeat = down && !physical.Add(key);
         if (!down) physical.Remove(key);
-        var nextChord = (physical.Contains(0xA2) || physical.Contains(0xA3)) && (physical.Contains(0x5B) || physical.Contains(0x5C));
-        var ctrlWin = key is 0xA2 or 0xA3 or 0x5B or 0x5C;
-        if (down && !repeat && nextChord && !chord && physical.All(k => k is 0xA2 or 0xA3 or 0x5B or 0x5C))
+        var nextChord = shortcut.Matches(physical.Where(shortcut.ContainsKey));
+        var ctrlWin = shortcut.ContainsKey(key);
+        if (down && !repeat && nextChord && !chord && shortcut.Matches(physical))
         {
             chord = true; suppressed.Add(key);
             return new(true, "down", [new(0xE8, true), new(0xE8, false)]);

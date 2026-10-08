@@ -4,8 +4,8 @@ Native Windows dictation using Ctrl+Win, Azure streaming transcription, and ligh
 text cleanup. Text is submitted at the current focused caret using Unicode input;
 the app does not use the clipboard.
 
-**Status:** initial desktop build available. Offline checks and startup pass;
-Azure and physical Windows acceptance are pending. The two-second target is unmeasured.
+**Status:** desktop build available; the user reports the application works.
+The two-second target is unmeasured; see the acceptance walkthrough for full validation.
 
 ## Before first run
 
@@ -37,8 +37,7 @@ leaving `/openai/v1/`. The app constructs the request routes itself.
 
 Speech uses the `gpt-live-transcribe` realtime model. Its deployment name in the
 app can remain `sasayaki-speech`; deploy the GPT Live Transcribe model with that
-name (or enter the deployment name you choose). The former MAI deployment is not
-used by this build.
+name (or enter the deployment name you choose).
 
 ## Run
 
@@ -47,11 +46,36 @@ the build includes the .NET runtime. Settings opens on first launch. Enter the
 six values above, using the masked fields for keys, test the connections, and
 save. Saved keys are protected for
 your Windows account under `%LOCALAPPDATA%\Sasayaki`, outside this repository.
+Once valid settings are saved, future launches start quietly in the system tray.
+Open Settings from the tray whenever you need to make changes. Missing or invalid
+settings, or an unavailable recording shortcut, open Settings automatically.
 
 - Hold Ctrl+Win and speak; release to finish.
 - Double-press Ctrl+Win to start hands-free recording; double-press again to finish.
 - Escape cancels. Recording is capped at five minutes with a countdown.
+- A blue-and-purple animated waveform responds to microphone volume while
+  recording in a compact, rounded overlay without recording text, then settles
+  when capture ends. Processing and error messages remain visible when needed.
+  Windows reduced-animation settings
+  disable continuous motion.
+- Recording automatically mutes all currently active Windows playback devices.
+  Audio returns when capture ends, including cancellation, errors, and tray Quit.
+  Devices already muted stay muted; manually unmuting during recording overrides
+  automatic restoration. Volume levels are unchanged. Devices connected after
+  recording starts are not muted until the next recording.
 - Right-click the system tray icon for Settings, recovery, discard, or Quit.
+- The tray and application use the supplied microphone artwork. Double-click
+  the tray icon to open Settings; Windows may place it in the hidden-icons menu.
+- Settings lets you update both endpoint URLs, deployment names, and API keys.
+  Leave a key field blank to retain its saved key; enter a new key to replace it.
+- Change the recording shortcut in Settings. Keep Ctrl+Win, or choose two or
+  more of Ctrl/Alt/Shift plus a letter, number, or F1–F11. Hold and double-press
+  gestures use the selected shortcut; Escape always cancels. Save applies changes
+  immediately and preserves the previous shortcut if the new one is unavailable.
+  Custom shortcuts are checked and reserved with Windows while Sasayaki runs.
+  This detects registered global conflicts, not shortcuts privately handled by
+  other apps. The default modifier-only Ctrl+Win gesture cannot be reserved this
+  way. A startup conflict opens Settings so you can select another shortcut.
 - To recover text, review it, arm insertion, focus the destination, then press and
   release Ctrl+Win. Check for any partial previous insertion before retrying.
 

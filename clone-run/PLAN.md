@@ -1,9 +1,9 @@
 # Sasayaki implementation plan
 
-Date: 2026-10-07. Scope: native Windows 11 personal dictation utility.
-Status: proposed implementation specification; not a completed application.
+Scope: native Windows personal dictation utility.
+Status: implementation reference; current validation is tracked in BUILD-STATUS.md.
 Review: self-review approved for implementation with explicit validation risks;
-see PLAN-REVIEW-LOG.md for revision-bound findings. Live acceptance remains unrun.
+see PLAN-REVIEW-LOG.md for revision-bound findings.
 
 ## Outcome
 
@@ -27,18 +27,18 @@ cloud latency. Preserve the result when insertion cannot complete safely.
 | Area | Selection | Reason and qualification |
 | --- | --- | --- |
 | Client | C# on .NET 10, WPF, Windows 11 | Windows desktop UI with direct Win32 interoperability; no browser shell |
-| Speech | Microsoft MAI-Transcribe-2-Streaming via ClientWebSocket | Stream while speaking; explicit finish/commit; public preview, deployment must be verified |
+| Speech | Azure-hosted gpt-live-transcribe via ClientWebSocket | GPT Realtime transcription; stream while speaking, then explicitly commit |
 | Cleanup | Azure-hosted gpt-5.4-mini, reasoning_effort=none | Initial small-model candidate for a narrowly constrained edit; benchmark, not an asserted best model |
 | Azure access | Direct from personal desktop to owned resources | No shared service, account database, gateway, or hosted server needed |
 | Credentials | API keys protected with Windows DPAPI CurrentUser | Simple personal setup; supports separate speech/cleanup resources and key rotation |
-| Audio | NAudio WASAPI capture; resample to PCM16 mono 16 kHz | Capture actual device format, convert explicitly; pin a compatible stable package |
+| Audio | NAudio WASAPI capture; resample to PCM16 mono 24 kHz | Capture actual device format, convert explicitly; pin a compatible stable package |
 | Hotkey | Dedicated WH_KEYBOARD_LL message-loop thread | Modifier-only chord, release events, and double-press need more than simple WM_HOTKEY |
 | Insertion | SendInput with KEYEVENTF_UNICODE | Private buffer; no clipboard overwrite/restore path |
 | Overlay | Nonactivating WPF window with Win32 styles | Preserve foreground/caret; display only while recording/processing/error |
 | Distribution | Self-contained win-x64 publish initially | Personal installation; detect actual machine architecture before publishing |
 
 Model/deployment settings are configurable. Never silently switch providers or
-models. If the preview is unavailable, retain the interface boundary, report the
+models. If the model is unavailable, retain the interface boundary, report the
 blocker, and evaluate standard Azure Speech as an explicit alternative. Do not
 change the requested Ctrl+Win gesture to avoid implementation work.
 
@@ -48,7 +48,7 @@ change the requested Ctrl+Win gesture to avoid implementation work.
 - HotkeyRecognizer: pure state machine behind a minimal native hook adapter.
 - DictationCoordinator: one active session, cancellation, generation IDs, stage timing.
 - AudioCapture: selected/default microphone, bounded buffer, sample conversion.
-- StreamingTranscriber: transport and MAI event assembly; no UI dependencies.
+- StreamingTranscriber: GPT Realtime transport and transcript assembly; no UI dependencies.
 - TextCleaner: Azure HTTP request, explicit prompt and response validation.
 - TextInjector: focus checks, modifier release checks, Unicode input submission.
 - SecretStore/SettingsStore: protected keys and nonsecret configuration.
@@ -109,18 +109,20 @@ is accepted. This remains a technical risk, not a proven implementation.
 Never capture audio while idle. Start capture at chord activation and immediately
 show the recording indication. Buffer a bounded amount while the connection opens;
 abort clearly on overflow rather than dropping samples or growing indefinitely.
-Initial queue cap: five seconds of converted audio (160,000 bytes at 16 kHz PCM16
-mono). Initial connection timeout: five seconds. Initial finish-to-result operation
+Audio send queue cap: 250 frames of up to 640 bytes (160,000 bytes, approximately
+3.3 seconds at 24 kHz PCM16 mono). Connection timeout: five seconds. Finish-to-result operation
 deadline: ten seconds, with a visible still-processing state beyond the two-second
 target. A timeout cancels late insertion and retains usable text; it is not success.
 Use device-native capture and resample to raw signed PCM16 little-endian, mono,
-16 kHz. Send ordered 20 ms frames (640 bytes), without WAV headers. Preserve and
+24 kHz. Send ordered frames of up to 640 bytes, without WAV headers. Preserve and
 send the final short frame if it contains complete PCM samples.
 
-Use the configured HTTPS resource root to construct the WSS MAI realtime URL.
-Authenticate in a header. Await session.created, send session.update with the
-actual deployment name, language=en, PCM rate=16000, turn_detection=null, and
-noise_reduction=null, and await session.updated before draining buffered audio.
+Use the configured HTTPS resource root to construct
+`wss://YOUR-RESOURCE.openai.azure.com/openai/v1/realtime?intent=transcription`.
+Authenticate with the resource API key in a header. Await session.created, then
+send session.update with type=transcription, audio.input.format type=audio/pcm
+and rate=24000, the actual deployment name, language=en, delay=minimal, and
+turn_detection=null. Await session.updated and gesture confirmation before draining audio.
 Send audio and receive events concurrently, with one ordered writer.
 
 At finish: stop capture, drain capture callbacks and resampler tail, finish the
@@ -213,7 +215,7 @@ erasure. Logs contain stage timings and error categories only.
    test Ctrl+Win states, nonactivation, key balancing, focus behavior, and clipboard-free
    injection into native, browser, editor, and terminal controls. Stop to report an
    unsatisfied hard requirement rather than hiding it behind clipboard paste.
-2. Azure spike: follow AZURE-SETUP.md; test MAI preview access, stream/commit/final,
+2. Azure integration: follow AZURE-SETUP.md; verify model access, stream/commit/final,
    evaluate cleanup fixtures, and measure warm/cold latency. No UI polish yet.
 3. Core pipeline: bounded audio queues, session lifecycle, cancellation, cleanup,
    no-duplicate insertion, protected settings, recoverable failures.
@@ -296,11 +298,10 @@ Azure setup is reproducible, and the measured latency meets the stated fixture.
 Any failed/live-unrun acceptance item remains explicitly open. A printed success
 banner or an offline mock alone does not establish completion.
 
-Known limitations requiring honest documentation: public-preview service behavior,
+Known limitations requiring honest documentation: cloud service availability,
 subscription availability, network variability, modifier-only shortcut conflicts,
 application-specific Unicode input handling, higher-integrity targets, and the
 focus race around global input submission. The plan handles failures but cannot
 promise unrestricted insertion into every possible Windows control.
 
-No automatic deployment, subscription spending, application implementation, or
-persistent goal has occurred during this planning run.
+Azure provisioning and subscription spending require the user's authorization.

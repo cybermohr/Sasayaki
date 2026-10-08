@@ -53,12 +53,12 @@ Technical choices are recommendations pending the plan's live validation milesto
 
 ## Implementation decisions and validation risks
 
-- Azure subscription/region availability and preview-model suitability.
+- Azure subscription/region availability and model suitability.
 - Clipboard-free insertion compatibility and focus changes during finalization.
 - Selected stack: C#/.NET 10 WPF with Win32 input integration; direct Azure access.
 - Cleanup candidate: Azure-hosted gpt-5.4-mini with reasoning disabled; verify
   deployment parameter support, editing fidelity, and end-to-end latency.
-- Leading speech candidate: MAI-Transcribe-2-Streaming (public preview), subject to
+- Speech model: Azure-hosted gpt-live-transcribe, subject to
   actual availability and a dictation accuracy/latency spike. See research.md.
 
 ## Proposed non-goals

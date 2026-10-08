@@ -13,17 +13,20 @@ public sealed class DictationCoordinator(Dispatcher dispatcher, Func<AppSettings
     private CancellationTokenSource? cancellation;
     private StreamingTranscriber? speech;
     private MicrophoneCapture? microphone;
+    private SystemAudioMute? systemAudioMute;
     private Task pause = Task.CompletedTask;
     private int generation;
     private long startedAt;
     private long finishStarted;
     private bool slowShown;
     private bool finishing, ending;
+    private TaskCompletionSource? endCompleted;
     public string RetainedText { get; private set; } = "";
     public bool Armed { get; private set; }
     public bool HasSession => cancellation != null || ending;
     public event Action<string>? Status;
     public event Action<float>? Level;
+    public event Action<bool>? RecordingChanged;
     public event Action? Completed;
     public event Action? Recovery;
 
@@ -32,6 +35,7 @@ public sealed class DictationCoordinator(Dispatcher dispatcher, Func<AppSettings
         switch (gesture.Action)
         {
             case GestureAction.Begin: Begin(); break;
+            case GestureAction.CommitGesture: speech?.ConfirmGesture(); break;
             case GestureAction.PauseCapture:
                 if (microphone != null) pause = microphone.StopAsync();
                 break;
@@ -61,8 +65,10 @@ public sealed class DictationCoordinator(Dispatcher dispatcher, Func<AppSettings
             microphone = new(config.MicrophoneId, speech.Append);
             microphone.Failed += error => PostFailure(id, error);
             microphone.Level += value => dispatcher.BeginInvoke(() => { if (id == generation && !finishing) Level?.Invoke(value); });
+            systemAudioMute = SystemAudioMute.Acquire();
             Status?.Invoke("Recording · release Ctrl+Win to finish · Esc cancels");
-            speech.Start(); microphone.Start();
+            speech.Start(provisional: true); microphone.Start();
+            RecordingChanged?.Invoke(true);
         }
         catch (Exception error) { _ = FailAsync(id, error); }
     }
@@ -97,6 +103,8 @@ public sealed class DictationCoordinator(Dispatcher dispatcher, Func<AppSettings
                 if (id != generation) return;
                 if (microphone != null) await microphone.StopAsync();
                 if (id != generation) return;
+                RestoreSystemAudio();
+                RecordingChanged?.Invoke(false);
                 var raw = speech == null ? "" : await speech.FinishAsync(token);
                 if (id != generation) return;
                 RetainedText = raw;
@@ -141,19 +149,37 @@ public sealed class DictationCoordinator(Dispatcher dispatcher, Func<AppSettings
     }
     private async Task EndAsync(int id)
     {
-        if (id != generation || ending) return;
+        if (ending) { await endCompleted!.Task; return; }
+        if (id != generation) return;
         ending = true;
+        RecordingChanged?.Invoke(false);
+        var completion = endCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         ++generation;
         var mic = microphone; var transcriber = speech; var source = cancellation;
         microphone = null; speech = null; cancellation = null;
-        source?.Cancel();
-        try { await pause; } catch { }
-        pause = Task.CompletedTask;
-        if (mic != null) { try { await mic.DisposeAsync(); } catch { } }
-        if (transcriber != null) await transcriber.DisposeAsync();
-        source?.Dispose();
-        ending = false;
-        Completed?.Invoke();
+        try
+        {
+            source?.Cancel();
+            try { await pause; } catch { }
+            pause = Task.CompletedTask;
+            if (mic != null) { try { await mic.DisposeAsync(); } catch { } }
+            RestoreSystemAudio();
+            if (transcriber != null) await transcriber.DisposeAsync();
+        }
+        finally
+        {
+            RestoreSystemAudio();
+            source?.Dispose();
+            ending = false;
+            completion.TrySetResult();
+            Completed?.Invoke();
+        }
+    }
+    private void RestoreSystemAudio()
+    {
+        var muted = systemAudioMute;
+        systemAudioMute = null;
+        muted?.Dispose();
     }
     public void Cancel()
     {

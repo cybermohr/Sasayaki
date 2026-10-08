@@ -57,6 +57,8 @@ public sealed class TextInjector
 /// <summary>Owns its hook and message pump. The callback performs only key bookkeeping and input replay.</summary>
 public sealed class KeyboardHook : IDisposable
 {
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool RegisterHotKey(nint window, int id, uint modifiers, uint key);
+    [DllImport("user32.dll")] private static extern bool UnregisterHotKey(nint window, int id);
     private delegate nint HookProc(int code, nuint message, nint data);
     [StructLayout(LayoutKind.Sequential)] private struct HookData { public uint Key, Scan, Flags, Time; public nuint Extra; }
     [StructLayout(LayoutKind.Sequential)] private struct Message { public nint Window; public uint Id; public nuint WParam; public nint LParam; public uint Time; public int X, Y; public uint Private; }
@@ -71,12 +73,16 @@ public sealed class KeyboardHook : IDisposable
     private readonly Thread thread;
     private readonly HookProc callback;
     private readonly TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly KeyboardRouter router = new();
+    private readonly KeyboardRouter router;
+    private readonly HotkeySettings shortcut;
     private nint hook;
     private uint threadId;
     public event Action<string, long>? Event;
-    public KeyboardHook()
+    public KeyboardHook(HotkeySettings? shortcut = null)
     {
+        this.shortcut = shortcut ?? new();
+        this.shortcut.Validate();
+        router = new(this.shortcut);
         callback = OnKey;
         thread = new Thread(Run) { IsBackground = true, Name = "Sasayaki keyboard" };
         thread.Start(); ready.Task.GetAwaiter().GetResult();
@@ -85,15 +91,25 @@ public sealed class KeyboardHook : IDisposable
     {
         threadId = GetCurrentThreadId();
         PeekMessage(out _, 0, 0, 0, 0);
+        if (!shortcut.IsDefault && !RegisterHotKey(0, 1, shortcut.Modifiers | 0x4000, shortcut.Key))
+        {
+            ready.TrySetException(new ConfigurationException($"{shortcut.DisplayName} is already registered by another application or unavailable in Windows. Choose another shortcut."));
+            return;
+        }
         hook = SetWindowsHookEx(13, callback, GetModuleHandle(null), 0);
-        if (hook == 0) { ready.TrySetException(new Win32Exception(Marshal.GetLastWin32Error())); return; }
+        if (hook == 0)
+        {
+            var error = new Win32Exception(Marshal.GetLastWin32Error());
+            if (!shortcut.IsDefault) UnregisterHotKey(0, 1);
+            ready.TrySetException(error); return;
+        }
         ready.TrySetResult();
         try
         {
             while (GetMessage(out var message, 0, 0, 0) > 0)
                 if (message.Id == 0x8001) router.Reset();
         }
-        finally { UnhookWindowsHookEx(hook); }
+        finally { UnhookWindowsHookEx(hook); if (!shortcut.IsDefault) UnregisterHotKey(0, 1); }
     }
     public void Reset() => PostThreadMessage(threadId, 0x8001, 0, 0);
     private nint OnKey(int code, nuint message, nint pointer)

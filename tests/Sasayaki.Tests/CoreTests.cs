@@ -154,7 +154,7 @@ public sealed class CoreTests
         var transport = new FakeTransport();
         await using var speech = new StreamingTranscriber(Config, transport);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        speech.Start(); speech.Append(new byte[640]); speech.Append(new byte[20]);
+        speech.Start(provisional: true); speech.Append(new byte[640]); speech.Append(new byte[20]);
         await speech.WaitUntilReadyAsync(deadline.Token);
         Assert.DoesNotContain(transport.Sent, s => s.Contains("input_audio_buffer.append", StringComparison.Ordinal));
         Assert.Equal("Final text.", await speech.FinishAsync(deadline.Token));
@@ -172,11 +172,25 @@ public sealed class CoreTests
         Assert.DoesNotContain(transport.Sent, s => s.Contains("input_audio_buffer.commit", StringComparison.Ordinal));
     }
     [Fact]
+    public async Task ConfirmedGestureStreamsBeforeFinish()
+    {
+        var transport = new FakeTransport();
+        await using var speech = new StreamingTranscriber(Config, transport);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        speech.Start(provisional: true); speech.Append(new byte[640]);
+        await speech.WaitUntilReadyAsync(deadline.Token);
+        Assert.False(transport.AudioAppended.Task.IsCompleted);
+        speech.ConfirmGesture();
+        await transport.AudioAppended.Task.WaitAsync(deadline.Token);
+        Assert.DoesNotContain(transport.Sent, s => s.Contains("input_audio_buffer.commit", StringComparison.Ordinal));
+        Assert.Equal("Final text.", await speech.FinishAsync(deadline.Token));
+    }
+    [Fact]
     public async Task AbortedProvisionalSessionNeverUploadsAudio()
     {
         var transport = new FakeTransport(); var speech = new StreamingTranscriber(Config, transport);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        speech.Start(); speech.Append(new byte[640]); await speech.WaitUntilReadyAsync(deadline.Token);
+        speech.Start(provisional: true); speech.Append(new byte[640]); await speech.WaitUntilReadyAsync(deadline.Token);
         await speech.DisposeAsync();
         Assert.DoesNotContain(transport.Sent, s => s.Contains("input_audio_buffer.append", StringComparison.Ordinal));
     }
@@ -191,6 +205,7 @@ public sealed class CoreTests
     {
         private readonly Channel<string> events = Channel.CreateUnbounded<string>();
         public System.Collections.Concurrent.ConcurrentQueue<string> Sent { get; } = new();
+        public TaskCompletionSource AudioAppended { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task ConnectAsync(Uri uri, string key, CancellationToken cancellationToken)
         { events.Writer.TryWrite("{\"type\":\"session.created\"}"); return Task.CompletedTask; }
         public Task SendAsync(string message, CancellationToken cancellationToken)
@@ -200,6 +215,7 @@ public sealed class CoreTests
             switch (json.RootElement.GetProperty("type").GetString())
             {
                 case "session.update": events.Writer.TryWrite("{\"type\":\"session.updated\"}"); break;
+                case "input_audio_buffer.append": AudioAppended.TrySetResult(); break;
                 case "input_audio_buffer.commit":
                     events.Writer.TryWrite("{\"type\":\"input_audio_buffer.committed\"}");
                     events.Writer.TryWrite("{\"type\":\"conversation.item.input_audio_transcription.completed\",\"transcript\":\"Final text.\"}"); break;

@@ -52,6 +52,7 @@ public sealed class StreamingTranscriber : IAsyncDisposable
         { SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
     private readonly TaskCompletionSource created = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource configured = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource gestureConfirmed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<string> result = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TranscriptAccumulator transcript = new();
     private Task? worker;
@@ -64,12 +65,14 @@ public sealed class StreamingTranscriber : IAsyncDisposable
     public StreamingTranscriber(AppSettings settings, IRealtimeTransport? transport = null)
     { this.settings = settings; this.transport = transport ?? new WebSocketTransport(); }
 
-    public void Start()
+    public void Start(bool provisional = false)
     {
         if (worker != null) throw new InvalidOperationException("A speech session cannot be started twice.");
         settings.ValidateSpeech();
+        if (!provisional) ConfirmGesture();
         worker = RunAsync();
     }
+    public void ConfirmGesture() => gestureConfirmed.TrySetResult();
     public void Append(byte[] frame)
     {
         if (frame.Length == 0 || frame.Length > 640 || frame.Length % 2 != 0)
@@ -82,6 +85,7 @@ public sealed class StreamingTranscriber : IAsyncDisposable
     {
         if (worker == null) throw new InvalidOperationException("Start the speech session first.");
         Interlocked.Exchange(ref finishRequested, 1);
+        ConfirmGesture();
         frames.Writer.TryComplete();
         return await result.Task.WaitAsync(cancellationToken);
     }
@@ -108,6 +112,7 @@ public sealed class StreamingTranscriber : IAsyncDisposable
                 } } }
             }), connectTimeout.Token);
             await configured.Task.WaitAsync(connectTimeout.Token);
+            await gestureConfirmed.Task.WaitAsync(lifetime.Token);
             var sent = 0;
             await foreach (var frame in frames.Reader.ReadAllAsync(lifetime.Token))
             {

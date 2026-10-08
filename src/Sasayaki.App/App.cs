@@ -16,6 +16,7 @@ public sealed class App : Application
     private DictationCoordinator coordinator = null!;
     private KeyboardHook? hook;
     private Forms.NotifyIcon? tray;
+    private System.Drawing.Icon? trayIcon;
     private SettingsWindow? settingsWindow;
     private RecoveryWindow? recoveryWindow;
     private DispatcherTimer timer = null!;
@@ -36,11 +37,15 @@ public sealed class App : Application
         base.OnStartup(e);
         try { settings = store.Load(); }
         catch { MessageBox.Show("Saved settings could not be read. Re-enter your Azure settings.", "Sasayaki"); }
+        var needsSettings = false;
+        try { settings.Validate(); }
+        catch (ConfigurationException) { needsSettings = true; }
         overlay = new();
         coordinator = new(Dispatcher, () => settings);
         gesture.Action += coordinator.Handle;
-        coordinator.Status += text => { hideAt = Environment.TickCount64 + 5000; overlay.SetStatus(text); };
+        coordinator.Status += text => { hideAt = Environment.TickCount64 + 5000; overlay.SetStatus(text.Replace("Ctrl+Win", settings.Hotkey.DisplayName)); };
         coordinator.Level += overlay.SetLevel;
+        coordinator.RecordingChanged += overlay.SetRecording;
         coordinator.Completed += () => gesture.Complete();
         coordinator.Recovery += () =>
         {
@@ -53,13 +58,35 @@ public sealed class App : Application
         menu.Items.Add("Discard retained text", null, (_, _) => Dispatcher.Invoke(() => coordinator.Discard()));
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Quit", null, async (_, _) => await QuitAsync());
-        tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "Sasayaki · Ctrl+Win dictation", ContextMenuStrip = menu, Visible = true };
+        using (var iconStream = GetResourceStream(new Uri("pack://application:,,,/Sasayaki;component/Assets/Sasayaki.ico")).Stream)
+            trayIcon = new System.Drawing.Icon(iconStream, 32, 32);
+        tray = new Forms.NotifyIcon { Icon = trayIcon, Text = $"Sasayaki · {settings.Hotkey.DisplayName} dictation", ContextMenuStrip = menu, Visible = true };
         tray.DoubleClick += (_, _) => Dispatcher.Invoke(OpenSettings);
         try
         {
-            hook = new();
-            hook.Event += (kind, time) => Dispatcher.BeginInvoke(() =>
+            hook = new(settings.Hotkey);
+            AttachHook(hook);
+        }
+        catch (Exception error) { MessageBox.Show(error is ConfigurationException ? error.Message : "Windows could not install the keyboard hook. Choose a shortcut in Settings or restart Sasayaki.", "Sasayaki"); }
+        timer = new DispatcherTimer(TimeSpan.FromMilliseconds(15), DispatcherPriority.Normal, (_, _) =>
+        {
+            gesture.Tick(Environment.TickCount64); coordinator.Tick();
+            if (!coordinator.HasSession && !coordinator.Armed && Environment.TickCount64 > hideAt) overlay.Hide();
+        }, Dispatcher);
+        SystemEvents.SessionSwitch += OnSessionSwitch;
+        SystemEvents.PowerModeChanged += OnPowerMode;
+        if (e.Args.Contains("--smoke-test"))
+        {
+            overlay.SetStatus("Startup smoke test");
+            Dispatcher.BeginInvoke(async () => { await Task.Delay(750); await QuitAsync(); });
+        }
+        else if (hook == null || needsSettings) OpenSettings();
+    }
+    private void AttachHook(KeyboardHook source)
+    {
+            source.Event += (kind, time) => Dispatcher.BeginInvoke(() =>
             {
+                if (hook != source || settingsWindow != null || quitting) return;
                 switch (kind)
                 {
                     case "down": gesture.Down(time); break;
@@ -75,28 +102,34 @@ public sealed class App : Application
                         break;
                 }
             });
-        }
-        catch { MessageBox.Show("Windows could not install the keyboard hook. Quit and restart Sasayaki.", "Sasayaki"); }
-        timer = new DispatcherTimer(TimeSpan.FromMilliseconds(15), DispatcherPriority.Normal, (_, _) =>
-        {
-            gesture.Tick(Environment.TickCount64); coordinator.Tick();
-            if (!coordinator.HasSession && !coordinator.Armed && Environment.TickCount64 > hideAt) overlay.Hide();
-        }, Dispatcher);
-        SystemEvents.SessionSwitch += OnSessionSwitch;
-        SystemEvents.PowerModeChanged += OnPowerMode;
-        if (e.Args.Contains("--smoke-test"))
-        {
-            overlay.SetStatus("Startup smoke test");
-            Dispatcher.BeginInvoke(async () => { await Task.Delay(750); await QuitAsync(); });
-        }
-        else if (string.IsNullOrEmpty(settings.SpeechKey) || !e.Args.Contains("--background")) OpenSettings();
     }
     private void OpenSettings()
     {
         if (coordinator.HasSession) return;
         if (settingsWindow != null) { settingsWindow.Activate(); return; }
-        settingsWindow = new(settings, value => { store.Save(value); settings = value; });
-        settingsWindow.Closed += (_, _) => settingsWindow = null; settingsWindow.Show();
+        settingsWindow = new(settings, SaveSettings);
+        settingsWindow.Closed += (_, _) => { settingsWindow = null; hook?.Reset(); gesture.Complete(); }; settingsWindow.Show();
+    }
+    private void SaveSettings(AppSettings value)
+    {
+        if (coordinator.HasSession) throw new ConfigurationException("Finish recording before changing settings.");
+        KeyboardHook? replacement = null;
+        try
+        {
+            if (hook == null || value.Hotkey != settings.Hotkey) replacement = new(value.Hotkey);
+            store.Save(value);
+        }
+        catch { replacement?.Dispose(); throw; }
+        if (replacement != null)
+        {
+            var previous = hook;
+            hook = replacement;
+            AttachHook(replacement);
+            previous?.Dispose();
+            gesture.Complete();
+        }
+        settings = value;
+        if (tray != null) tray.Text = $"Sasayaki · {settings.Hotkey.DisplayName} dictation";
     }
     private void OpenRecovery()
     {
@@ -116,6 +149,6 @@ public sealed class App : Application
         timer.Stop(); hook?.Dispose();
         SystemEvents.SessionSwitch -= OnSessionSwitch; SystemEvents.PowerModeChanged -= OnPowerMode;
         await coordinator.DisposeAsync();
-        tray?.Dispose(); Shutdown();
+        tray?.Dispose(); trayIcon?.Dispose(); Shutdown();
     }
 }

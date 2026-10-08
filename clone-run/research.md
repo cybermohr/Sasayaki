@@ -1,14 +1,14 @@
 # Sasayaki research and decisions
 
-Researched 2026-10-07. Scope: personal Windows 11 app, English-only Azure dictation,
+Scope: personal Windows app, English-only Azure dictation,
 Ctrl+Win hold/double-press, faithful light cleanup, two-second finish-to-insertion
-target, and no mutation of the normal clipboard. Research and a proposed design
-are complete; live model quality, credentials, and native input behavior are untested.
+target, and no mutation of the normal clipboard. Current implementation and
+validation are tracked in [BUILD-STATUS.md](BUILD-STATUS.md).
 
 ## Recommended architecture
 
 Use C#/.NET 10 WPF with Win32 input integration, direct personal Azure connections,
-MAI-Transcribe-2-Streaming for recognition, and gpt-5.4-mini with reasoning disabled
+Azure-hosted gpt-live-transcribe for recognition, and gpt-5.4-mini with reasoning disabled
 for cleanup. Store resource keys under the user's local profile protected by DPAPI.
 Keep audio/text in bounded process memory. This is an engineering recommendation
 based on the requirements and documentation, not a benchmark result.
@@ -21,38 +21,20 @@ omits its broader personalization, snippets, meeting notes, team, and sync featu
 Nothing in that product page establishes Wispr's internal architecture or provides
 a latency guarantee for our implementation.
 
-## Speech model comparison
+## Speech model selection
 
-| Candidate | Assessment for this workload |
-| --- | --- |
-| MAI-Transcribe-2-Streaming | First choice to benchmark: Microsoft model with incremental output and explicit completion; public preview |
-| MAI-Transcribe-2 file transcription | Relevant accuracy/cost comparison, but uploading a completed recording puts more work after the finish key |
-| Standard Azure Speech realtime | Alternative if preview access/reliability fails; requires separate accuracy and explicit-stop tests |
-| Azure-hosted OpenAI transcription | Other viable candidates, but not the requested Microsoft-built first choice; no added dependency justified yet |
+Use `gpt-live-transcribe` for live English transcription through the GPT Realtime
+API. Deploy it in Microsoft Foundry as `sasayaki-speech`. Confirm model availability
+and quota in the intended subscription before creating the resource; see
+[Azure setup](AZURE-SETUP.md) for the current deployment workflow.
 
-Microsoft's [October 1 launch announcement](https://microsoft.ai/news/our-first-streaming-transcription-model/)
-reports leading streaming accuracy and introductory pricing of $0.54/audio hour
-through the end of 2026. These are vendor-reported results; they do not measure
-Sasayaki's full pipeline. Select based on the user's English dictation fixtures,
-including names, technical terms, and self-corrections.
-
-The [current overview](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe-2-streaming)
-labels the service public preview without an SLA and lists Central US, East US 2,
-Sweden Central, and Southeast Asia. Actual subscription deployment availability
-must be checked. Older search snippets disagreed on regions; use current pages and
-the portal. Preview suitability remains a disclosed deployment risk, not silent
-user acceptance of a production SLA limitation.
-
-The [Realtime API guide](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe-2-streaming-realtime)
-provides a controllable explicit commit path. Design choice: direct ClientWebSocket,
-stream during speech, drain captured audio, commit once, and wait for completed text.
-Distinguish provisional suffixes, stable deltas, acknowledgment, and the complete
-result to avoid duplicate or truncated insertion. The [Speech SDK alternative](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe-2-streaming-speech-sdk)
-is documented with a C# example, but adds a stop/flush abstraction we would need to
-verify; the direct route gives this small application a clearer protocol contract.
-
-The [nonstreaming model documentation](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe)
-is useful for comparison, not interchangeable setup instructions for streaming.
+Microsoft's [GPT Realtime guide](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio)
+lists `gpt-live-transcribe` for real-time transcription and duration-based billing.
+The [WebSocket guide](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-websockets)
+describes the resource endpoint and session configuration. Sasayaki uses 24 kHz
+PCM16 mono, streams ordered frames after gesture confirmation, drains captured
+audio on finish, commits once, and waits for the completed transcript.
+A commit acknowledgment alone is not a final transcription result.
 
 ## Cleanup model selection
 
@@ -88,7 +70,7 @@ framework choice is reversible before the first native spike.
 
 Use [NAudio](https://github.com/naudio/NAudio) for microphone/WASAPI integration;
 its [resampling guidance](https://github.com/naudio/NAudio/blob/main/Docs/Resampling.md)
-supports explicit conversion instead of assuming the mic already produces 16 kHz
+supports explicit conversion instead of assuming the mic already produces 24 kHz
 mono PCM. Pin a stable release verified against .NET 10 during implementation.
 Do not send loopback/system audio.
 
@@ -145,8 +127,8 @@ and [CurrentUser scope](https://learn.microsoft.com/en-us/dotnet/api/system.secu
 A same-user process can still access that user's secrets; this is at-rest protection,
 not isolation from other software running as the user. No extra backend server is
 needed. If the subscription prohibits key authentication, plan an Entra variant
-instead of changing its policies. AZURE-SETUP.md documents actual setup steps and
-diagnostic requests; no Azure CLI login or resource inspection was performed.
+instead of changing its policies. [AZURE-SETUP.md](AZURE-SETUP.md) documents the
+resource, deployment, and application configuration steps.
 
 ## Five main implementation risks and proof steps
 
@@ -154,17 +136,14 @@ diagnostic requests; no Azure CLI login or resource inspection was performed.
    with native tests before adding cloud services.
 2. Text delivery: demonstrate clipboard-free insertion across representative controls,
    preserve data on failures, and distinguish submitted from visibly inserted.
-3. Preview availability/accuracy: deploy in the user's subscription and test real English
+3. Model availability/accuracy: deploy in the user's subscription and test real English
    fixtures. Documentation alone does not establish access or quality for this voice.
 4. Two-second latency: streaming reduces work after finish, but finalization, cleanup,
    network, and target rendering all count. Measure cold and warm full-pipeline runs.
 5. Cleanup fidelity: test names, numbers, negation, corrections, intended repetition,
    questions, and instruction-like text; never silently answer or rewrite the speaker.
 
-## Local evidence and unrun checks
+## Validation
 
-The repository initially contained only README.md. No applicable ancestor AGENTS.md
-was found. `dotnet --list-sdks` returned no SDKs, although a dotnet host is on PATH.
-Azure CLI was not found on PATH. A .NET 10 SDK installation is a build prerequisite;
-Azure portal setup avoids making Azure CLI mandatory. There are no app binaries,
-implemented acceptance harnesses, live credentials, or measured timing results yet.
+See [BUILD-STATUS.md](BUILD-STATUS.md) for current build evidence and
+[the acceptance walkthrough](../docs/ACCEPTANCE.md) for validation steps.

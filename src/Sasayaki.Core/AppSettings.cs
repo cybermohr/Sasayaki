@@ -10,6 +10,7 @@ public sealed record AppSettings
     public string CleanupKey { get; init; } = "";
     public string MicrophoneId { get; init; } = "";
     public bool StartAtLogin { get; init; }
+    public HotkeySettings Hotkey { get; init; } = new();
 
     public void ValidateSpeech()
     {
@@ -23,7 +24,7 @@ public sealed record AppSettings
         if (string.IsNullOrWhiteSpace(CleanupDeployment) || string.IsNullOrWhiteSpace(CleanupKey))
             throw new ConfigurationException("Enter the cleanup deployment name and API key in Settings.");
     }
-    public void Validate() { ValidateSpeech(); ValidateCleanup(); }
+    public void Validate() { ValidateSpeech(); ValidateCleanup(); Hotkey.Validate(); }
 
     public Uri SpeechUri()
     {
