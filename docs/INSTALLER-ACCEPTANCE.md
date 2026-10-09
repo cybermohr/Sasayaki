@@ -102,7 +102,8 @@ Recorded on 2026-10-08:
 
 - `Build-Installer.ps1 -Version 1.0.0`: succeeded, including MSI inspection;
   Windows Installer ICE validation reported no errors or warnings.
-- Output: `artifacts/installer/Sasayaki-1.0.0-x64.msi`, 59,977,414 bytes, unsigned.
+- Distributed package: `installer/Sasayaki-1.0.0-x64.msi`, 59,977,414 bytes,
+  unsigned (originally built under `artifacts/installer`).
   SHA-256: `5E05856979D6F23B81087EEF05806748ECC0086234A3FEEACE6CCB131E33BD7F`.
 - All 480 embedded files match the isolated fresh publish by SHA-256. Application
   executable and assemblies have file version `1.0.0.0`; runtime files are included.
