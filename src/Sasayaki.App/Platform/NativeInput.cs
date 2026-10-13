@@ -36,8 +36,8 @@ public sealed class TextInjector
 {
     public async Task InsertAsync(string text, CancellationToken cancellationToken)
     {
-        if (text.Length > 16000 || text.Any(char.IsControl))
-            throw new ServiceException("Text contains unsupported control characters or is too long. The result is retained.");
+        text = DictationText.ForInsertion(text);
+        if (text.Length == 0) return;
         var target = NativeInput.Target();
         if (target == default) throw new ServiceException("Focus a text field in another application, then arm the retained text.");
         var wait = Stopwatch.StartNew();

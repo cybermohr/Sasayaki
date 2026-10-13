@@ -41,7 +41,7 @@ name (or enter the deployment name you choose).
 
 ## Run
 
-Install [Sasayaki-1.0.0-x64.msi](installer/Sasayaki-1.0.0-x64.msi) and open Sasayaki from the
+Install [Sasayaki-1.0.1-x64.msi](installer/Sasayaki-1.0.1-x64.msi) and open Sasayaki from the
 Start menu. The installer includes the .NET runtime.
 Settings opens on first launch. Enter the
 six values above, using the masked fields for keys, test the connections, and
@@ -52,6 +52,8 @@ Open Settings from the tray whenever you need to make changes. Missing or invali
 settings, or an unavailable recording shortcut, open Settings automatically.
 
 - Hold Ctrl+Win and speak; release to finish.
+- Each inserted dictation ends with one space, so the next dictation or typed
+  sentence starts separately from the preceding punctuation.
 - Double-press Ctrl+Win to start hands-free recording; double-press again to finish.
 - Escape cancels. Recording is capped at five minutes with a countdown.
 - A blue-and-purple animated waveform responds to microphone volume while
@@ -88,7 +90,7 @@ incomplete when transcription/cleanup fails.
 ## Build and verify
 
 ```powershell
-pwsh -File scripts/Build-Installer.ps1 -Version 1.0.0
+pwsh -File scripts/Build-Installer.ps1 -Version 1.0.1
 pwsh -File scripts/Test-Acceptance.ps1 -Mode Offline
 ```
 
@@ -107,7 +109,7 @@ and MSI, and produces one MSI with embedded cabinets under `artifacts/installer`
 MSI table inspection runs automatically after building. Run it separately with:
 
 ```powershell
-pwsh -File scripts/Test-Installer.ps1 -Path installer/Sasayaki-1.0.0-x64.msi -Version 1.0.0
+pwsh -File scripts/Test-Installer.ps1 -Path installer/Sasayaki-1.0.1-x64.msi -Version 1.0.1
 ```
 
 Add `-CheckSession` to verify both destination and Start menu scopes using MSI

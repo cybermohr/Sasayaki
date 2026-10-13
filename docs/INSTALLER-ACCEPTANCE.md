@@ -117,3 +117,15 @@ Recorded on 2026-10-08:
 - Detailed inspection, extracted package data, and payload verification are under
   the ignored `TestResults/installer` directory. The isolated lifecycle script is
   provided and syntax-checked, but was not run on this workstation.
+
+Recorded on 2026-10-13 for the trailing-space update:
+
+- `Build-Installer.ps1 -Version 1.0.1` succeeded, including MSI inspection.
+- Package: `installer/Sasayaki-1.0.1-x64.msi`, 59,993,798 bytes, unsigned.
+  SHA-256: `978099F8BF890AB081E5751603879A54F7CDE2C27088037D86D74EFB51EEC5CB`.
+- Both MSI costing sessions passed; x64 metadata, embedded runtime/cabinets,
+  480 payload files, shortcuts, and installation guards passed inspection.
+- Offline tests: 71 passed, zero failed or skipped, including punctuation,
+  consecutive dictations, existing trailing whitespace, and insertion safety limits.
+- The application was built but no installation or live dictation was performed
+  in this session. The installed application was left running undisturbed.
