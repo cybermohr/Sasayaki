@@ -45,10 +45,14 @@ public sealed class WebSocketTransport : IRealtimeTransport
 /// <summary>One recording, one ordered audio stream, one final commit. Owns no microphone.</summary>
 public sealed class StreamingTranscriber : IAsyncDisposable
 {
+    // PCM16 mono at 24 kHz: allow 15 seconds of backlog, including connection setup.
+    private const int MaxFrameBytes = 640;
+    private const int PendingFrameCapacity = 24000 * 2 * 15 / MaxFrameBytes;
+    private const int FramesPerSend = 10;
     private readonly AppSettings settings;
     private readonly IRealtimeTransport transport;
     private readonly CancellationTokenSource lifetime = new();
-    private readonly Channel<byte[]> frames = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(250)
+    private readonly Channel<byte[]> frames = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(PendingFrameCapacity)
         { SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
     private readonly TaskCompletionSource created = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource configured = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -75,11 +79,11 @@ public sealed class StreamingTranscriber : IAsyncDisposable
     public void ConfirmGesture() => gestureConfirmed.TrySetResult();
     public void Append(byte[] frame)
     {
-        if (frame.Length == 0 || frame.Length > 640 || frame.Length % 2 != 0)
+        if (frame.Length == 0 || frame.Length > MaxFrameBytes || frame.Length % 2 != 0)
             throw new ArgumentException("Audio must be an even-sized PCM16 frame of at most 640 bytes.", nameof(frame));
         if (Volatile.Read(ref finishRequested) != 0) throw new InvalidOperationException("Audio arrived after the recording was drained.");
         if (!frames.Writer.TryWrite(frame.ToArray()))
-            throw new ServiceException("The speech connection fell behind. Recording stopped without dropping audio silently.");
+            throw new ServiceException("The speech connection could not keep up and the audio buffer filled. Recording stopped. Check your network connection and try again; any available text is retained.");
     }
     public async Task<string> FinishAsync(CancellationToken cancellationToken)
     {
@@ -114,10 +118,19 @@ public sealed class StreamingTranscriber : IAsyncDisposable
             await configured.Task.WaitAsync(connectTimeout.Token);
             await gestureConfirmed.Task.WaitAsync(lifetime.Token);
             var sent = 0;
+            var batch = new byte[MaxFrameBytes * FramesPerSend];
             await foreach (var frame in frames.Reader.ReadAllAsync(lifetime.Token))
             {
-                await transport.SendAsync(JsonSerializer.Serialize(new { type = "input_audio_buffer.append", audio = Convert.ToBase64String(frame) }), lifetime.Token);
-                sent += frame.Length;
+                frame.CopyTo(batch, 0);
+                var length = frame.Length;
+                // Drain only frames already queued; do not delay live audio to fill a batch.
+                for (var count = 1; count < FramesPerSend && frames.Reader.TryRead(out var next); count++)
+                {
+                    next.CopyTo(batch, length);
+                    length += next.Length;
+                }
+                await transport.SendAsync(JsonSerializer.Serialize(new { type = "input_audio_buffer.append", audio = Convert.ToBase64String(batch, 0, length) }), lifetime.Token);
+                sent += length;
             }
             if (sent == 0) { result.TrySetResult(""); return; }
             Interlocked.Exchange(ref commitSent, 1);

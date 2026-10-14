@@ -159,7 +159,8 @@ public sealed class CoreTests
         Assert.DoesNotContain(transport.Sent, s => s.Contains("input_audio_buffer.append", StringComparison.Ordinal));
         Assert.Equal("Final text.", await speech.FinishAsync(deadline.Token));
         var sent = transport.Sent.ToArray();
-        Assert.Equal(2, sent.Count(s => s.Contains("input_audio_buffer.append", StringComparison.Ordinal)));
+        Assert.Single(sent, s => s.Contains("input_audio_buffer.append", StringComparison.Ordinal));
+        Assert.Equal(new byte[660], UploadedAudio(transport));
         Assert.Single(sent, s => s.Contains("input_audio_buffer.commit", StringComparison.Ordinal));
         Assert.Contains("input_audio_buffer.commit", sent[^1]);
     }
@@ -198,29 +199,82 @@ public sealed class CoreTests
     public async Task PendingAudioIsBounded()
     {
         await using var speech = new StreamingTranscriber(Config, new FakeTransport());
-        for (var i = 0; i < 250; i++) speech.Append(new byte[640]);
-        Assert.Throws<ServiceException>(() => speech.Append(new byte[640]));
+        for (var i = 0; i < 1125; i++) speech.Append(new byte[640]);
+        var error = Assert.Throws<ServiceException>(() => speech.Append(new byte[640]));
+        Assert.Contains("Check your network connection", error.Message);
+    }
+    [Fact]
+    public async Task ConnectionSetupBacklogDrainsInBatchesWithoutLosingAudio()
+    {
+        var transport = new FakeTransport { HoldConfiguration = true };
+        await using var speech = new StreamingTranscriber(Config, transport);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        speech.Start();
+        // Four seconds at 24 kHz exceeds the old queue before setup completes.
+        var source = Enumerable.Range(0, 24000 * 2 * 4 + 20).Select(n => (byte)(n * 31)).ToArray();
+        for (var offset = 0; offset < source.Length; offset += 640)
+            speech.Append(source.AsSpan(offset, Math.Min(640, source.Length - offset)).ToArray());
+        Assert.False(transport.AudioAppended.Task.IsCompleted);
+        transport.ReleaseConfiguration();
+        Assert.Equal("Final text.", await speech.FinishAsync(deadline.Token));
+        Assert.Equal(source, UploadedAudio(transport));
+        Assert.Equal(31, transport.Sent.Count(s => s.Contains("input_audio_buffer.append", StringComparison.Ordinal)));
+        Assert.Contains("input_audio_buffer.commit", transport.Sent.Last());
+    }
+    [Fact]
+    public async Task SlowSendBacklogDrainsWithoutLosingAudio()
+    {
+        var sendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new FakeTransport { AudioSendGate = sendGate };
+        await using var speech = new StreamingTranscriber(Config, transport);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        speech.Start();
+        var first = new byte[] { 1, 2 };
+        speech.Append(first);
+        await transport.AudioAppended.Task.WaitAsync(deadline.Token);
+        var source = Enumerable.Range(0, 640 * 400 + 20).Select(n => (byte)(n * 17)).ToArray();
+        for (var offset = 0; offset < source.Length; offset += 640)
+            speech.Append(source.AsSpan(offset, Math.Min(640, source.Length - offset)).ToArray());
+        sendGate.TrySetResult();
+        Assert.Equal("Final text.", await speech.FinishAsync(deadline.Token));
+        Assert.Equal(first.Concat(source), UploadedAudio(transport));
+        Assert.Single(transport.Sent, s => s.Contains("input_audio_buffer.commit", StringComparison.Ordinal));
+        Assert.Contains("input_audio_buffer.commit", transport.Sent.Last());
+    }
+    private static byte[] UploadedAudio(FakeTransport transport)
+    {
+        return transport.Sent.SelectMany(message =>
+        {
+            using var json = JsonDocument.Parse(message);
+            return json.RootElement.GetProperty("type").GetString() == "input_audio_buffer.append"
+                ? Convert.FromBase64String(json.RootElement.GetProperty("audio").GetString()!) : Array.Empty<byte>();
+        }).ToArray();
     }
     private sealed class FakeTransport : IRealtimeTransport
     {
         private readonly Channel<string> events = Channel.CreateUnbounded<string>();
         public System.Collections.Concurrent.ConcurrentQueue<string> Sent { get; } = new();
         public TaskCompletionSource AudioAppended { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool HoldConfiguration { get; init; }
+        public TaskCompletionSource? AudioSendGate { get; init; }
+        public void ReleaseConfiguration() => events.Writer.TryWrite("{\"type\":\"session.updated\"}");
         public Task ConnectAsync(Uri uri, string key, CancellationToken cancellationToken)
         { events.Writer.TryWrite("{\"type\":\"session.created\"}"); return Task.CompletedTask; }
-        public Task SendAsync(string message, CancellationToken cancellationToken)
+        public async Task SendAsync(string message, CancellationToken cancellationToken)
         {
             Sent.Enqueue(message);
             using var json = JsonDocument.Parse(message);
             switch (json.RootElement.GetProperty("type").GetString())
             {
-                case "session.update": events.Writer.TryWrite("{\"type\":\"session.updated\"}"); break;
-                case "input_audio_buffer.append": AudioAppended.TrySetResult(); break;
+                case "session.update": if (!HoldConfiguration) ReleaseConfiguration(); break;
+                case "input_audio_buffer.append":
+                    AudioAppended.TrySetResult();
+                    if (AudioSendGate != null) await AudioSendGate.Task.WaitAsync(cancellationToken);
+                    break;
                 case "input_audio_buffer.commit":
                     events.Writer.TryWrite("{\"type\":\"input_audio_buffer.committed\"}");
                     events.Writer.TryWrite("{\"type\":\"conversation.item.input_audio_transcription.completed\",\"transcript\":\"Final text.\"}"); break;
             }
-            return Task.CompletedTask;
         }
         public async Task<string> ReceiveAsync(CancellationToken cancellationToken) => await events.Reader.ReadAsync(cancellationToken);
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
