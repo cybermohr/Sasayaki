@@ -41,7 +41,7 @@ name (or enter the deployment name you choose).
 
 ## Run
 
-Install [Sasayaki-1.0.1-x64.msi](installer/Sasayaki-1.0.1-x64.msi) and open Sasayaki from the
+Install [Sasayaki-1.0.2-x64.msi](installer/Sasayaki-1.0.2-x64.msi) and open Sasayaki from the
 Start menu. The installer includes the .NET runtime.
 Settings opens on first launch. Enter the
 six values above, using the masked fields for keys, test the connections, and
@@ -90,7 +90,7 @@ incomplete when transcription/cleanup fails.
 ## Build and verify
 
 ```powershell
-pwsh -File scripts/Build-Installer.ps1 -Version 1.0.1
+pwsh -File scripts/Build-Installer.ps1 -Version 1.0.2
 pwsh -File scripts/Test-Acceptance.ps1 -Mode Offline
 ```
 
@@ -109,7 +109,7 @@ and MSI, and produces one MSI with embedded cabinets under `artifacts/installer`
 MSI table inspection runs automatically after building. Run it separately with:
 
 ```powershell
-pwsh -File scripts/Test-Installer.ps1 -Path installer/Sasayaki-1.0.1-x64.msi -Version 1.0.1
+pwsh -File scripts/Test-Installer.ps1 -Path installer/Sasayaki-1.0.2-x64.msi -Version 1.0.2
 ```
 
 Add `-CheckSession` to verify both destination and Start menu scopes using MSI

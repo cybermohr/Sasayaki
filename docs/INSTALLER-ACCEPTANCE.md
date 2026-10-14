@@ -11,7 +11,7 @@ registry markers. It never owns the app's settings file or Run registry value.
 ## Automated package checks
 
 ```powershell
-pwsh -File scripts/Build-Installer.ps1 -Version 1.0.0
+pwsh -File scripts/Build-Installer.ps1 -Version 1.0.2
 pwsh -File scripts/Test-Acceptance.ps1 -Mode Offline
 ```
 
@@ -91,6 +91,10 @@ an elevated terminal, so the completion launch retains the original user.
 
 ## Evidence from implementation environment
 
+The current distribution is `installer/Sasayaki-1.0.2-x64.msi`. Older version
+paths below identify historical packages; rebuild them if needed for lifecycle
+testing.
+
 See the recorded results below. No isolated Windows VM, Windows Sandbox launcher,
 or Hyper-V management command was available in the implementation session.
 The interactive lifecycle, UAC, repair, upgrade, downgrade, running-recording,
@@ -129,3 +133,14 @@ Recorded on 2026-10-13 for the trailing-space update:
   consecutive dictations, existing trailing whitespace, and insertion safety limits.
 - The application was built but no installation or live dictation was performed
   in this session. The installed application was left running undisturbed.
+
+Recorded on 2026-10-14 for the speech-backlog fix:
+
+- `Build-Installer.ps1 -Version 1.0.2` succeeded, including MSI inspection.
+- Package: `installer/Sasayaki-1.0.2-x64.msi`, 59,981,510 bytes, unsigned.
+  SHA-256: `056C11D4331296B1FFE08E06DFF34B8C2876F8BC909E678991775CDFB11FB5FB`.
+- MSI inspection passed: x64, 480 payload files, embedded runtime/cabinets,
+  both scopes, branded Start menu, installation guards, and unchecked launch.
+- Offline tests: 73 passed, zero failed or skipped, including delayed speech
+  setup, stalled uploads, and ordered audio preservation through the final frame.
+- No installation or live Azure dictation was performed in this session.
