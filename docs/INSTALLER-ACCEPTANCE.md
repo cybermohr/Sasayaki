@@ -11,7 +11,7 @@ registry markers. It never owns the app's settings file or Run registry value.
 ## Automated package checks
 
 ```powershell
-pwsh -File scripts/Build-Installer.ps1 -Version 1.0.3
+pwsh -File scripts/Build-Installer.ps1 -Version 1.0.4
 pwsh -File scripts/Test-Acceptance.ps1 -Mode Offline
 ```
 
@@ -91,9 +91,9 @@ an elevated terminal, so the completion launch retains the original user.
 
 ## Evidence from implementation environment
 
-The current distribution is `installer/Sasayaki-1.0.3-x64.msi`. Older version
-paths below identify historical packages; rebuild them if needed for lifecycle
-testing.
+The current distribution is `installer/Sasayaki-1.0.4-x64.msi`. Older version
+paths below identify historical packages; rebuild any missing packages if needed
+for lifecycle testing.
 
 See the recorded results below. No isolated Windows VM, Windows Sandbox launcher,
 or Hyper-V management command was available in the implementation session.
@@ -157,3 +157,31 @@ Recorded on 2026-10-14 for the timeout update:
 - Processing now allows 30 seconds after finishing, with a 10-second speech
   setup window and timeout messages identifying the stalled step.
 - No installation or live Azure dictation was performed in this session.
+
+Recorded on 2026-10-14 for the speech-connection retry update (1.0.4):
+
+- `Build-Installer.ps1 -Version 1.0.4` succeeded, including MSI inspection.
+- Package: `installer/Sasayaki-1.0.4-x64.msi`, 59,969,222 bytes, unsigned.
+  SHA-256: `FC8CE2A42F4D78102ECC961EC348B4CFFD9FF5C344C7824CF5E9E809455623AC`.
+- MSI inspection passed: x64, 480 payload files, embedded runtime/cabinets,
+  both scopes, branded Start menu, installation guards, and unchecked launch.
+- Reproduced two consecutive ten-second WebSocket handshake timeouts with the
+  saved speech settings, followed by a successful handshake in 330 ms.
+- Network tracing showed DNS, TCP, and TLS completing, followed by a stalled
+  HTTP upgrade response. This reproduces a delay independently of microphone
+  capture, but does not establish the cause of the user's first-recording-only
+  success pattern.
+- Speech setup now allows 30 seconds and up to three connection attempts. Only
+  timed-out handshakes retry, before session configuration or audio upload.
+  The bounded audio queue covers 35 seconds; processing still has a 30-second
+  deadline after the finish gesture.
+- Offline tests: 80 passed, zero failed or skipped. New loopback WebSocket tests
+  verify a fresh socket after a stalled handshake, prompt caller cancellation,
+  and no retries for rejected credentials. The backlog test preserves 25 seconds
+  of audio in order through the final commit.
+- Six live Azure session setup/empty-finish/dispose cycles succeeded in two runs:
+  23,505 / 7,247 / 1,297 ms and 21,778 / 587 / 21,418 ms. Tracing in the second
+  run confirmed recovery on the third connection attempt for two sessions.
+  No microphone audio or cleanup request was sent during these checks.
+- Repeated microphone dictation and the installed-app upgrade remain interactive
+  checks; the running installed application was not replaced during diagnosis.

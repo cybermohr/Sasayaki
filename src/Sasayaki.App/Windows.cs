@@ -131,12 +131,12 @@ public sealed class SettingsWindow : Window
             try
             {
                 var config = Read(); config.Validate();
-                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
                 await using var speech = new StreamingTranscriber(config); speech.Start();
                 await speech.WaitUntilReadyAsync(timeout.Token);
                 using var http = new HttpClient();
                 _ = await new TextCleaner(http).CleanAsync("This is a connection test.", config, timeout.Token);
-                status.Text = "Speech session and cleanup request succeeded. Microphone transcription still needs a dictation test.";
+                status.Text = "Speech session and cleanup request succeeded. Click Save settings to use these values for dictation. Microphone transcription still needs a dictation test.";
             }
             catch (Exception e) { status.Text = e is ConfigurationException or ServiceException ? e.Message : "Connection test failed. Check keys, deployment names, network access, and supported model parameters."; }
             finally { test.IsEnabled = true; }

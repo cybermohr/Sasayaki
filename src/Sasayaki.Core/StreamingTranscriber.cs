@@ -14,12 +14,29 @@ public interface IRealtimeTransport : IAsyncDisposable
 
 public sealed class WebSocketTransport : IRealtimeTransport
 {
-    private readonly ClientWebSocket socket = new();
+    private ClientWebSocket socket = new();
     public async Task ConnectAsync(Uri uri, string key, CancellationToken cancellationToken)
     {
-        socket.Options.SetRequestHeader("api-key", key);
-        socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
-        await socket.ConnectAsync(uri, cancellationToken);
+        // A stalled upgrade can succeed immediately on a fresh connection. Only retry
+        // here, before a session exists or any audio has been uploaded.
+        for (var attempt = 1; ; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            socket.Options.SetRequestHeader("api-key", key);
+            socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+            using var attemptTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attemptTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+            try
+            {
+                await socket.ConnectAsync(uri, attemptTimeout.Token).ConfigureAwait(false);
+                return;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < 3)
+            {
+                socket.Dispose();
+                socket = new ClientWebSocket();
+            }
+        }
     }
     public Task SendAsync(string message, CancellationToken cancellationToken) =>
         socket.SendAsync(Encoding.UTF8.GetBytes(message).AsMemory(), WebSocketMessageType.Text, true, cancellationToken).AsTask();
@@ -45,9 +62,9 @@ public sealed class WebSocketTransport : IRealtimeTransport
 /// <summary>One recording, one ordered audio stream, one final commit. Owns no microphone.</summary>
 public sealed class StreamingTranscriber : IAsyncDisposable
 {
-    // PCM16 mono at 24 kHz: allow 15 seconds of backlog, including connection setup.
+    // PCM16 mono at 24 kHz: cover the 30-second setup deadline plus a drain margin.
     private const int MaxFrameBytes = 640;
-    private const int PendingFrameCapacity = 24000 * 2 * 15 / MaxFrameBytes;
+    private const int PendingFrameCapacity = 24000 * 2 * 35 / MaxFrameBytes;
     private const int FramesPerSend = 10;
     private readonly AppSettings settings;
     private readonly IRealtimeTransport transport;
@@ -102,7 +119,7 @@ public sealed class StreamingTranscriber : IAsyncDisposable
         {
             using (var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token))
             {
-                connectTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+                connectTimeout.CancelAfter(TimeSpan.FromSeconds(30));
                 var stage = "connection";
                 try
                 {
@@ -125,7 +142,7 @@ public sealed class StreamingTranscriber : IAsyncDisposable
                 }
                 catch (OperationCanceledException) when (!lifetime.IsCancellationRequested)
                 {
-                    throw new ServiceException($"Speech {stage} timed out during the 10-second setup window. Check your network and test Azure connections in Settings. Any available text is retained; nothing will be inserted later.");
+                    throw new ServiceException($"Speech {stage} timed out during the 30-second setup window. Azure may be temporarily slow or unreachable even if the Settings connection test passed. Try dictating again. Any available text is retained; nothing will be inserted later.");
                 }
             }
             await gestureConfirmed.Task.WaitAsync(lifetime.Token);

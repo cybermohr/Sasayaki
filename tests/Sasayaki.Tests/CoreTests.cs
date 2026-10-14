@@ -199,7 +199,7 @@ public sealed class CoreTests
     public async Task PendingAudioIsBounded()
     {
         await using var speech = new StreamingTranscriber(Config, new FakeTransport());
-        for (var i = 0; i < 1125; i++) speech.Append(new byte[640]);
+        for (var i = 0; i < 2625; i++) speech.Append(new byte[640]);
         var error = Assert.Throws<ServiceException>(() => speech.Append(new byte[640]));
         Assert.Contains("Check your network connection", error.Message);
     }
@@ -216,11 +216,11 @@ public sealed class CoreTests
             HoldConfiguration = stage == "session configuration"
         };
         await using var speech = new StreamingTranscriber(Config, transport);
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(35));
         speech.Start();
         var error = await Assert.ThrowsAsync<ServiceException>(() => speech.WaitUntilReadyAsync(deadline.Token));
         Assert.Contains($"Speech {stage} timed out", error.Message);
-        Assert.Contains("test Azure connections", error.Message);
+        Assert.Contains("even if the Settings connection test passed", error.Message);
         Assert.DoesNotContain(transport.Sent, s => s.Contains("input_audio_buffer.commit", StringComparison.Ordinal));
     }
     [Fact]
@@ -245,15 +245,15 @@ public sealed class CoreTests
         await using var speech = new StreamingTranscriber(Config, transport);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         speech.Start();
-        // Four seconds at 24 kHz exceeds the old queue before setup completes.
-        var source = Enumerable.Range(0, 24000 * 2 * 4 + 20).Select(n => (byte)(n * 31)).ToArray();
+        // Retain a recording across two stalled ten-second connection attempts.
+        var source = Enumerable.Range(0, 24000 * 2 * 25 + 20).Select(n => (byte)(n * 31)).ToArray();
         for (var offset = 0; offset < source.Length; offset += 640)
             speech.Append(source.AsSpan(offset, Math.Min(640, source.Length - offset)).ToArray());
         Assert.False(transport.AudioAppended.Task.IsCompleted);
         transport.ReleaseConfiguration();
         Assert.Equal("Final text.", await speech.FinishAsync(deadline.Token));
         Assert.Equal(source, UploadedAudio(transport));
-        Assert.Equal(31, transport.Sent.Count(s => s.Contains("input_audio_buffer.append", StringComparison.Ordinal)));
+        Assert.Equal(188, transport.Sent.Count(s => s.Contains("input_audio_buffer.append", StringComparison.Ordinal)));
         Assert.Contains("input_audio_buffer.commit", transport.Sent.Last());
     }
     [Fact]
