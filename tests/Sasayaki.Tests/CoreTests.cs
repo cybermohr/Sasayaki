@@ -203,6 +203,41 @@ public sealed class CoreTests
         var error = Assert.Throws<ServiceException>(() => speech.Append(new byte[640]));
         Assert.Contains("Check your network connection", error.Message);
     }
+    [Theory]
+    [InlineData("connection")]
+    [InlineData("session creation")]
+    [InlineData("session configuration")]
+    public async Task SetupTimeoutIdentifiesTheStalledStep(string stage)
+    {
+        var transport = new FakeTransport
+        {
+            HoldConnection = stage == "connection",
+            HoldCreation = stage == "session creation",
+            HoldConfiguration = stage == "session configuration"
+        };
+        await using var speech = new StreamingTranscriber(Config, transport);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        speech.Start();
+        var error = await Assert.ThrowsAsync<ServiceException>(() => speech.WaitUntilReadyAsync(deadline.Token));
+        Assert.Contains($"Speech {stage} timed out", error.Message);
+        Assert.Contains("test Azure connections", error.Message);
+        Assert.DoesNotContain(transport.Sent, s => s.Contains("input_audio_buffer.commit", StringComparison.Ordinal));
+    }
+    [Fact]
+    public async Task CancellingDuringSetupDoesNotReportATimeoutOrUploadAudio()
+    {
+        var transport = new FakeTransport { HoldConfiguration = true };
+        var speech = new StreamingTranscriber(Config, transport);
+        var failures = new List<Exception>();
+        speech.Failed += failures.Add;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        speech.Start(provisional: true);
+        speech.Append(new byte[640]);
+        await transport.ConfigurationSent.Task.WaitAsync(deadline.Token);
+        await speech.DisposeAsync();
+        Assert.Empty(failures);
+        Assert.False(transport.AudioAppended.Task.IsCompleted);
+    }
     [Fact]
     public async Task ConnectionSetupBacklogDrainsInBatchesWithoutLosingAudio()
     {
@@ -255,18 +290,27 @@ public sealed class CoreTests
         private readonly Channel<string> events = Channel.CreateUnbounded<string>();
         public System.Collections.Concurrent.ConcurrentQueue<string> Sent { get; } = new();
         public TaskCompletionSource AudioAppended { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ConfigurationSent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool HoldConnection { get; init; }
+        public bool HoldCreation { get; init; }
         public bool HoldConfiguration { get; init; }
         public TaskCompletionSource? AudioSendGate { get; init; }
         public void ReleaseConfiguration() => events.Writer.TryWrite("{\"type\":\"session.updated\"}");
-        public Task ConnectAsync(Uri uri, string key, CancellationToken cancellationToken)
-        { events.Writer.TryWrite("{\"type\":\"session.created\"}"); return Task.CompletedTask; }
+        public async Task ConnectAsync(Uri uri, string key, CancellationToken cancellationToken)
+        {
+            if (HoldConnection) await Task.Delay(Timeout.Infinite, cancellationToken);
+            if (!HoldCreation) events.Writer.TryWrite("{\"type\":\"session.created\"}");
+        }
         public async Task SendAsync(string message, CancellationToken cancellationToken)
         {
             Sent.Enqueue(message);
             using var json = JsonDocument.Parse(message);
             switch (json.RootElement.GetProperty("type").GetString())
             {
-                case "session.update": if (!HoldConfiguration) ReleaseConfiguration(); break;
+                case "session.update":
+                    ConfigurationSent.TrySetResult();
+                    if (!HoldConfiguration) ReleaseConfiguration();
+                    break;
                 case "input_audio_buffer.append":
                     AudioAppended.TrySetResult();
                     if (AudioSendGate != null) await AudioSendGate.Task.WaitAsync(cancellationToken);

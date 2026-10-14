@@ -8,7 +8,9 @@ namespace Sasayaki.App;
 /// <summary>All session mutations run on the WPF dispatcher. Generation checks reject late callbacks.</summary>
 public sealed class DictationCoordinator(Dispatcher dispatcher, Func<AppSettings> settings) : IAsyncDisposable
 {
-    private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(10) };
+    // The session deadline covers both response headers and the cleanup response body.
+    private static readonly TimeSpan ProcessingTimeout = TimeSpan.FromSeconds(30);
+    private readonly HttpClient http = new() { Timeout = Timeout.InfiniteTimeSpan };
     private readonly TextInjector injector = new();
     private CancellationTokenSource? cancellation;
     private StreamingTranscriber? speech;
@@ -93,7 +95,8 @@ public sealed class DictationCoordinator(Dispatcher dispatcher, Func<AppSettings
         finishing = true;
         finishStarted = finishAt; slowShown = false;
         var token = cancellation.Token;
-        cancellation.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(1, 10000 - (Environment.TickCount64 - finishAt))));
+        cancellation.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(1, ProcessingTimeout.TotalMilliseconds - (Environment.TickCount64 - finishAt))));
+        var stage = "Stopping microphone capture";
         try
         {
             if (!Armed)
@@ -105,17 +108,20 @@ public sealed class DictationCoordinator(Dispatcher dispatcher, Func<AppSettings
                 if (id != generation) return;
                 RestoreSystemAudio();
                 RecordingChanged?.Invoke(false);
+                stage = "Speech transcription";
                 var raw = speech == null ? "" : await speech.FinishAsync(token);
                 if (id != generation) return;
                 RetainedText = raw;
                 if (!string.IsNullOrWhiteSpace(raw))
                 {
+                    stage = "Text cleanup";
                     Status?.Invoke("Cleaning dictation…");
                     var cleaned = await new TextCleaner(http).CleanAsync(raw, settings(), token);
                     if (id != generation) return;
                     RetainedText = cleaned;
                 }
             }
+            stage = "Text insertion";
             token.ThrowIfCancellationRequested();
             if (id != generation) return;
             Armed = false;
@@ -130,7 +136,12 @@ public sealed class DictationCoordinator(Dispatcher dispatcher, Func<AppSettings
             RetainedText = "";
             await EndAsync(id);
         }
-        catch (Exception error) { await FailAsync(id, error); }
+        catch (Exception error)
+        {
+            if (error is OperationCanceledException or TimeoutException)
+                error = new ServiceException($"{stage} timed out. Any available text is retained; nothing will be inserted later. Review / retry retained text from the tray, or check Azure connections in Settings.");
+            await FailAsync(id, error);
+        }
     }
     private async Task FailAsync(int id, Exception error)
     {

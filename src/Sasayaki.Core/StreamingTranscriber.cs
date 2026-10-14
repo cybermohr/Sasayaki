@@ -100,22 +100,34 @@ public sealed class StreamingTranscriber : IAsyncDisposable
         Task? receiver = null;
         try
         {
-            using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-            connectTimeout.CancelAfter(TimeSpan.FromSeconds(5));
-            await transport.ConnectAsync(settings.SpeechUri(), settings.SpeechKey, connectTimeout.Token);
-            receiver = ReceiveAsync();
-            await created.Task.WaitAsync(connectTimeout.Token);
-            await transport.SendAsync(JsonSerializer.Serialize(new
+            using (var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token))
             {
-                type = "session.update",
-                session = new { type = "transcription", audio = new { input = new
+                connectTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+                var stage = "connection";
+                try
                 {
-                    format = new { type = "audio/pcm", rate = 24000 },
-                    transcription = new { model = settings.SpeechDeployment, language = "en", delay = "minimal" },
-                    turn_detection = (object?)null
-                } } }
-            }), connectTimeout.Token);
-            await configured.Task.WaitAsync(connectTimeout.Token);
+                    await transport.ConnectAsync(settings.SpeechUri(), settings.SpeechKey, connectTimeout.Token);
+                    stage = "session creation";
+                    receiver = ReceiveAsync();
+                    await created.Task.WaitAsync(connectTimeout.Token);
+                    stage = "session configuration";
+                    await transport.SendAsync(JsonSerializer.Serialize(new
+                    {
+                        type = "session.update",
+                        session = new { type = "transcription", audio = new { input = new
+                        {
+                            format = new { type = "audio/pcm", rate = 24000 },
+                            transcription = new { model = settings.SpeechDeployment, language = "en", delay = "minimal" },
+                            turn_detection = (object?)null
+                        } } }
+                    }), connectTimeout.Token);
+                    await configured.Task.WaitAsync(connectTimeout.Token);
+                }
+                catch (OperationCanceledException) when (!lifetime.IsCancellationRequested)
+                {
+                    throw new ServiceException($"Speech {stage} timed out during the 10-second setup window. Check your network and test Azure connections in Settings. Any available text is retained; nothing will be inserted later.");
+                }
+            }
             await gestureConfirmed.Task.WaitAsync(lifetime.Token);
             var sent = 0;
             var batch = new byte[MaxFrameBytes * FramesPerSend];

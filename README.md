@@ -41,7 +41,7 @@ name (or enter the deployment name you choose).
 
 ## Run
 
-Install [Sasayaki-1.0.2-x64.msi](installer/Sasayaki-1.0.2-x64.msi) and open Sasayaki from the
+Install [Sasayaki-1.0.3-x64.msi](installer/Sasayaki-1.0.3-x64.msi) and open Sasayaki from the
 Start menu. The installer includes the .NET runtime.
 Settings opens on first launch. Enter the
 six values above, using the masked fields for keys, test the connections, and
@@ -87,10 +87,17 @@ rules. The overlay reports submission to Windows, not verified rendering. Errors
 retain available text in memory; quitting clears it. Retained text can be raw or
 incomplete when transcription/cleanup fails.
 
+Processing allows up to 30 seconds after the finish gesture for transcription,
+cleanup, and insertion together; speech connection setup allows 10 seconds.
+The two-second target is still reported when exceeded. Timeout messages identify
+the step that stalled. Use tray → Review / retry retained text to recover any
+available transcript. Escape cancels processing, and timed-out sessions never
+insert a late result automatically.
+
 ## Build and verify
 
 ```powershell
-pwsh -File scripts/Build-Installer.ps1 -Version 1.0.2
+pwsh -File scripts/Build-Installer.ps1 -Version 1.0.3
 pwsh -File scripts/Test-Acceptance.ps1 -Mode Offline
 ```
 
@@ -109,7 +116,7 @@ and MSI, and produces one MSI with embedded cabinets under `artifacts/installer`
 MSI table inspection runs automatically after building. Run it separately with:
 
 ```powershell
-pwsh -File scripts/Test-Installer.ps1 -Path installer/Sasayaki-1.0.2-x64.msi -Version 1.0.2
+pwsh -File scripts/Test-Installer.ps1 -Path installer/Sasayaki-1.0.3-x64.msi -Version 1.0.3
 ```
 
 Add `-CheckSession` to verify both destination and Start menu scopes using MSI

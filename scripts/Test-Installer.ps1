@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory)][string]$Path,
-    [string]$Version = '1.0.2',
+    [string]$Version = '1.0.3',
     [string]$PublishedPath,
     [switch]$CheckSession
 )

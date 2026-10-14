@@ -11,7 +11,7 @@ registry markers. It never owns the app's settings file or Run registry value.
 ## Automated package checks
 
 ```powershell
-pwsh -File scripts/Build-Installer.ps1 -Version 1.0.2
+pwsh -File scripts/Build-Installer.ps1 -Version 1.0.3
 pwsh -File scripts/Test-Acceptance.ps1 -Mode Offline
 ```
 
@@ -91,7 +91,7 @@ an elevated terminal, so the completion launch retains the original user.
 
 ## Evidence from implementation environment
 
-The current distribution is `installer/Sasayaki-1.0.2-x64.msi`. Older version
+The current distribution is `installer/Sasayaki-1.0.3-x64.msi`. Older version
 paths below identify historical packages; rebuild them if needed for lifecycle
 testing.
 
@@ -143,4 +143,17 @@ Recorded on 2026-10-14 for the speech-backlog fix:
   both scopes, branded Start menu, installation guards, and unchecked launch.
 - Offline tests: 73 passed, zero failed or skipped, including delayed speech
   setup, stalled uploads, and ordered audio preservation through the final frame.
+- No installation or live Azure dictation was performed in this session.
+
+Recorded on 2026-10-14 for the timeout update:
+
+- `Build-Installer.ps1 -Version 1.0.3` succeeded, including MSI inspection.
+- Package: `installer/Sasayaki-1.0.3-x64.msi`, 59,973,318 bytes, unsigned.
+  SHA-256: `BAE4E3E8557B5ED3DF3D2741A6C99432DE82059D10C37764F3EB67D4973CFF1A`.
+- MSI inspection passed: x64, 480 payload files, embedded runtime/cabinets,
+  both scopes, branded Start menu, installation guards, and unchecked launch.
+- Offline tests: 77 passed, zero failed or skipped, including setup timeouts
+  for connection, session creation, and configuration, and cancellation during setup.
+- Processing now allows 30 seconds after finishing, with a 10-second speech
+  setup window and timeout messages identifying the stalled step.
 - No installation or live Azure dictation was performed in this session.
